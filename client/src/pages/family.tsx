@@ -63,7 +63,7 @@ export default function FamilyPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto" data-testid="family-page">
+    <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto page-enter" data-testid="family-page">
       <h1 className="text-xl font-bold">{familyData?.family.name || "Family"}</h1>
 
       {isLoading ? (
@@ -75,7 +75,7 @@ export default function FamilyPage() {
           {members.map((member) => (
             <Card
               key={member.id}
-              className="cursor-pointer transition-colors"
+              className="cursor-pointer card-hover"
               onClick={() => setSelectedMember(member)}
               data-testid={`family-card-${member.id}`}
             >

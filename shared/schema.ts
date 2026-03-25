@@ -84,6 +84,59 @@ export const photos = sqliteTable("photos", {
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
 });
 
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  email: text("email").notNull().unique(),
+  password: text("password").notNull(),
+  name: text("name").notNull(),
+  memberId: integer("member_id"),
+  role: text("role").notNull().default("parent"), // admin, parent, child
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+});
+
+export const inviteCodes = sqliteTable("invite_codes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  code: text("code").notNull().unique(),
+  createdById: integer("created_by_id").notNull(),
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+});
+
+export const locations = sqliteTable("locations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  memberId: integer("member_id").notNull(),
+  latitude: text("latitude").notNull(),
+  longitude: text("longitude").notNull(),
+  address: text("address"),
+  updatedAt: text("updated_at").notNull().default(new Date().toISOString()),
+});
+
+export const chatMessages = sqliteTable("chat_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  senderName: text("sender_name").notNull(),
+  platform: text("platform").notNull().default("internal"), // imessage, whatsapp, sms, internal
+  content: text("content").notNull(),
+  externalId: text("external_id"),
+  importedAt: text("imported_at"),
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+});
+
+export const subscriptions = sqliteTable("subscriptions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  status: text("status").notNull().default("active"), // active, cancelled, past_due, trialing
+  plan: text("plan").notNull().default("family"), // family, extended
+  priceMonthly: integer("price_monthly").notNull().default(1999), // cents
+  startedAt: text("started_at").notNull(),
+  expiresAt: text("expires_at"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+});
+
 // Insert schemas
 export const insertFamilySchema = createInsertSchema(families).omit({ id: true, createdAt: true });
 export const insertFamilyMemberSchema = createInsertSchema(familyMembers).omit({ id: true, createdAt: true });
@@ -93,6 +146,11 @@ export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit
 export const insertMediaItemSchema = createInsertSchema(mediaItems).omit({ id: true, createdAt: true });
 export const insertThinkingOfYouSchema = createInsertSchema(thinkingOfYou).omit({ id: true, createdAt: true });
 export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true, createdAt: true });
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertInviteCodeSchema = createInsertSchema(inviteCodes).omit({ id: true, createdAt: true });
+export const insertLocationSchema = createInsertSchema(locations).omit({ id: true, updatedAt: true });
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ id: true, createdAt: true });
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true, createdAt: true });
 
 // Insert types
 export type InsertFamily = z.infer<typeof insertFamilySchema>;
@@ -103,6 +161,11 @@ export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 export type InsertMediaItem = z.infer<typeof insertMediaItemSchema>;
 export type InsertThinkingOfYou = z.infer<typeof insertThinkingOfYouSchema>;
 export type InsertPhoto = z.infer<typeof insertPhotoSchema>;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type InsertInviteCode = z.infer<typeof insertInviteCodeSchema>;
+export type InsertLocation = z.infer<typeof insertLocationSchema>;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 
 // Select types
 export type Family = typeof families.$inferSelect;
@@ -113,3 +176,8 @@ export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type MediaItem = typeof mediaItems.$inferSelect;
 export type ThinkingOfYouPulse = typeof thinkingOfYou.$inferSelect;
 export type Photo = typeof photos.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type InviteCode = typeof inviteCodes.$inferSelect;
+export type Location = typeof locations.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type Subscription = typeof subscriptions.$inferSelect;

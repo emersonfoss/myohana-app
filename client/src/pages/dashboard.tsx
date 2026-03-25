@@ -50,7 +50,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="p-6 space-y-8 max-w-5xl mx-auto" data-testid="dashboard-page">
+    <div className="p-4 sm:p-6 space-y-8 max-w-5xl mx-auto page-enter" data-testid="dashboard-page">
       {/* Welcome header */}
       <div>
         <h1 className="text-xl font-bold" data-testid="text-welcome">
@@ -62,7 +62,7 @@ export default function Dashboard() {
       {/* Stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map((stat) => (
-          <Card key={stat.label} data-testid={`stat-${stat.label.toLowerCase().replace(/\s/g, "-")}`}>
+          <Card key={stat.label} className="card-hover" data-testid={`stat-${stat.label.toLowerCase().replace(/\s/g, "-")}`}>
             <CardContent className="pt-5 pb-4 px-4">
               <div className="flex items-center justify-between gap-1 mb-2">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -101,7 +101,7 @@ export default function Dashboard() {
       </div>
 
       {/* Quick actions */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <Link href="/messages">
           <Button data-testid="button-send-message">
             <Send className="h-4 w-4 mr-2" />
@@ -142,7 +142,7 @@ export default function Dashboard() {
             {messages.map((msg) => {
               const author = members.find(m => m.id === msg.authorId);
               return (
-                <Card key={msg.id} data-testid={`message-preview-${msg.id}`}>
+                <Card key={msg.id} className="card-hover" data-testid={`message-preview-${msg.id}`}>
                   <CardContent className="py-3 px-4">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm shrink-0 mt-0.5">

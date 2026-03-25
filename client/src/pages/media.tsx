@@ -20,8 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Play, BookOpen, Music, X } from "lucide-react";
+import { Plus, Trash2, Play, BookOpen, Music, X, Film } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Family, FamilyMember, MediaItem } from "@shared/schema";
 
 function getYouTubeId(url: string): string | null {
@@ -42,6 +43,7 @@ const typeIcons: Record<string, typeof Play> = {
 };
 
 export default function Media() {
+  const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
   const [newMedia, setNewMedia] = useState({
@@ -68,6 +70,7 @@ export default function Media() {
       queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       setDialogOpen(false);
       setNewMedia({ title: "", url: "", type: "youtube", approvedForAges: "all" });
+      toast({ title: "Media added", description: "Your content has been added to the media room." });
     },
   });
 
@@ -77,6 +80,7 @@ export default function Media() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/media"] });
+      toast({ title: "Media removed", description: "The item has been removed from the media room." });
     },
   });
 
@@ -99,7 +103,7 @@ export default function Media() {
   const books = (mediaItems || []).filter((m) => m.type === "book");
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto" data-testid="media-page">
+    <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto page-enter" data-testid="media-page">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-xl font-bold">Media Room</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -210,9 +214,14 @@ export default function Media() {
           </div>
         ) : videos.length === 0 ? (
           <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              <Play className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              No videos yet. Add a YouTube link!
+            <CardContent className="py-16 text-center">
+              <Film className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
+              <h3 className="font-semibold text-lg mb-1">Your media room is empty</h3>
+              <p className="text-sm text-muted-foreground mb-4">Add some approved content for the family.</p>
+              <Button onClick={() => setDialogOpen(true)} data-testid="button-first-media">
+                <Plus className="h-4 w-4 mr-2" />
+                Add First Video
+              </Button>
             </CardContent>
           </Card>
         ) : (
@@ -222,7 +231,7 @@ export default function Media() {
               return (
                 <Card
                   key={item.id}
-                  className="overflow-hidden cursor-pointer group"
+                  className="overflow-hidden cursor-pointer group card-hover"
                   data-testid={`media-card-${item.id}`}
                 >
                   <div

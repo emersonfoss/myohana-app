@@ -21,12 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Filter } from "lucide-react";
+import { Plus, Filter, MessageCircle } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Family, FamilyMember, Message } from "@shared/schema";
 
 export default function Messages() {
+  const { toast } = useToast();
   const [filter, setFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -55,6 +57,7 @@ export default function Messages() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       setDialogOpen(false);
       setNewMsg({ recipientId: "", title: "", content: "", type: "text" });
+      toast({ title: "Message sent", description: "Your message has been delivered to the family." });
     },
   });
 
@@ -92,7 +95,7 @@ export default function Messages() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl mx-auto" data-testid="messages-page">
+    <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto page-enter" data-testid="messages-page">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-xl font-bold">Messages</h1>
         <div className="flex items-center gap-2">
@@ -201,8 +204,14 @@ export default function Messages() {
         </div>
       ) : filteredMessages.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">No messages found. Send the first one!</p>
+          <CardContent className="py-16 text-center">
+            <MessageCircle className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
+            <h3 className="font-semibold text-lg mb-1">No messages yet</h3>
+            <p className="text-sm text-muted-foreground mb-4">Send the first one to your family.</p>
+            <Button onClick={() => setDialogOpen(true)} data-testid="button-first-message">
+              <Plus className="h-4 w-4 mr-2" />
+              New Message
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -217,7 +226,7 @@ export default function Messages() {
             return (
               <Card
                 key={msg.id}
-                className="cursor-pointer transition-colors"
+                className="cursor-pointer card-hover"
                 onClick={() => setExpandedId(isExpanded ? null : msg.id)}
                 data-testid={`message-card-${msg.id}`}
               >

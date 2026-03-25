@@ -1,6 +1,6 @@
 import { db } from "./storage";
 import {
-  families, familyMembers, messages, vaultDocuments, mediaItems, calendarEvents
+  families, familyMembers, messages, vaultDocuments, mediaItems, calendarEvents, locations, subscriptions, chatMessages
 } from "@shared/schema";
 
 export async function seedDatabase() {
@@ -184,6 +184,114 @@ export async function seedDatabase() {
     startDate: nextWeek2.toISOString(),
     memberIds: JSON.stringify([dad.id, mom.id, scarlett.id, emmy.id, baby.id]),
     source: "manual",
+  }).run();
+
+  // Seed locations for Family Pulse
+  const now = new Date();
+  const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+  const tenMinAgo = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  const twentyMinAgo = new Date(now.getTime() - 20 * 60 * 1000).toISOString();
+
+  db.insert(locations).values({
+    familyId: family.id,
+    memberId: dad.id,
+    latitude: "40.7128",
+    longitude: "-74.0060",
+    address: "Home — New York",
+    updatedAt: fiveMinAgo,
+  }).run();
+
+  db.insert(locations).values({
+    familyId: family.id,
+    memberId: mom.id,
+    latitude: "40.7128",
+    longitude: "-74.0060",
+    address: "Home — New York",
+    updatedAt: tenMinAgo,
+  }).run();
+
+  db.insert(locations).values({
+    familyId: family.id,
+    memberId: scarlett.id,
+    latitude: "40.7580",
+    longitude: "-73.9855",
+    address: "School — Midtown",
+    updatedAt: twentyMinAgo,
+  }).run();
+
+  db.insert(locations).values({
+    familyId: family.id,
+    memberId: emmy.id,
+    latitude: "40.7580",
+    longitude: "-73.9855",
+    address: "School — Midtown",
+    updatedAt: twentyMinAgo,
+  }).run();
+
+  db.insert(locations).values({
+    familyId: family.id,
+    memberId: baby.id,
+    latitude: "40.7128",
+    longitude: "-74.0060",
+    address: "Home — New York",
+    updatedAt: fiveMinAgo,
+  }).run();
+
+  // Seed subscription for the Foss family
+  const subStart = new Date();
+  const nextMonth = new Date(subStart);
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  db.insert(subscriptions).values({
+    familyId: family.id,
+    status: "active",
+    plan: "family",
+    priceMonthly: 1999,
+    startedAt: subStart.toISOString(),
+    expiresAt: nextMonth.toISOString(),
+    stripeCustomerId: "mock_cus_1",
+    stripeSubscriptionId: "mock_sub_1",
+  }).run();
+
+  // Seed chat messages
+  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+  db.insert(chatMessages).values({
+    familyId: family.id,
+    senderName: "Kristina",
+    platform: "whatsapp",
+    content: "Can you pick up Scarlett from school today?",
+    createdAt: new Date(twoHoursAgo.getTime()).toISOString(),
+  }).run();
+
+  db.insert(chatMessages).values({
+    familyId: family.id,
+    senderName: "Dad",
+    platform: "whatsapp",
+    content: "On it! What time?",
+    createdAt: new Date(twoHoursAgo.getTime() + 2 * 60 * 1000).toISOString(),
+  }).run();
+
+  db.insert(chatMessages).values({
+    familyId: family.id,
+    senderName: "Kristina",
+    platform: "whatsapp",
+    content: "3:15. She has soccer practice until then",
+    createdAt: new Date(twoHoursAgo.getTime() + 4 * 60 * 1000).toISOString(),
+  }).run();
+
+  db.insert(chatMessages).values({
+    familyId: family.id,
+    senderName: "Dad",
+    platform: "whatsapp",
+    content: "👍 I'll be there",
+    createdAt: new Date(twoHoursAgo.getTime() + 5 * 60 * 1000).toISOString(),
+  }).run();
+
+  db.insert(chatMessages).values({
+    familyId: family.id,
+    senderName: "Scarlett",
+    platform: "internal",
+    content: "Daddy I made a painting for you!",
+    createdAt: new Date(twoHoursAgo.getTime() + 60 * 60 * 1000).toISOString(),
   }).run();
 
   console.log("Database seeded successfully!");

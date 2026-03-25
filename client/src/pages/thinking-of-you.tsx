@@ -5,9 +5,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Heart } from "lucide-react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Family, FamilyMember, ThinkingOfYouPulse } from "@shared/schema";
 
 export default function ThinkingOfYou() {
+  const { toast } = useToast();
   const [animatingId, setAnimatingId] = useState<number | null>(null);
 
   const { data: familyData } = useQuery<{ family: Family; members: FamilyMember[] }>({
@@ -23,8 +25,10 @@ export default function ThinkingOfYou() {
       const res = await apiRequest("POST", "/api/thinking-of-you", data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/thinking-of-you"] });
+      const recipient = members.find((m) => m.id === variables.recipientId);
+      toast({ title: "Pulse sent", description: `${recipient?.name.split(" ")[0] || "They"} knows you're thinking of them.` });
     },
   });
 
@@ -45,7 +49,7 @@ export default function ThinkingOfYou() {
   const recentPulses = (pulses || []).slice(0, 20);
 
   return (
-    <div className="p-6 space-y-10 max-w-2xl mx-auto" data-testid="thinking-of-you-page">
+    <div className="p-4 sm:p-6 space-y-10 max-w-2xl mx-auto page-enter" data-testid="thinking-of-you-page">
       {/* Header */}
       <div className="text-center pt-4">
         <Heart className="h-8 w-8 mx-auto text-primary mb-3" />
@@ -98,9 +102,13 @@ export default function ThinkingOfYou() {
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10" />)}
           </div>
         ) : recentPulses.length === 0 ? (
-          <p className="text-center text-sm text-muted-foreground py-4">
-            No pulses yet. Tap someone above to send the first one.
-          </p>
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Heart className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
+              <h3 className="font-semibold text-lg mb-1">No pulses yet</h3>
+              <p className="text-sm text-muted-foreground">Let someone know you're thinking of them.</p>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-2">
             {recentPulses.map((pulse) => {

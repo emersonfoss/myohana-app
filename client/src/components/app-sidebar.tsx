@@ -1,13 +1,23 @@
 import {
   LayoutDashboard,
+  MapPin,
   MessageCircle,
   Shield,
   Calendar,
   Play,
   Heart,
+  Camera,
+  Sparkles,
   Users,
+  Brain,
+  Settings,
+  LogOut,
+  MessagesSquare,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -22,12 +32,18 @@ import {
 
 const navItems = [
   { title: "Home", url: "/", icon: LayoutDashboard },
+  { title: "Family Pulse", url: "/pulse", icon: MapPin },
   { title: "Messages", url: "/messages", icon: MessageCircle },
+  { title: "Chat Bridge", url: "/chat", icon: MessagesSquare },
   { title: "Vault", url: "/vault", icon: Shield },
   { title: "Calendar", url: "/calendar", icon: Calendar },
   { title: "Media Room", url: "/media", icon: Play },
   { title: "Thinking of You", url: "/thinking-of-you", icon: Heart },
+  { title: "Photos", url: "/photos", icon: Camera },
+  { title: "Memories", url: "/memories", icon: Sparkles },
   { title: "Family", url: "/family", icon: Users },
+  { title: "Family Graph", url: "/graph", icon: Brain },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 function OhanaLogo() {
@@ -53,6 +69,42 @@ function OhanaLogo() {
       <line x1="21" y1="12" x2="19" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
       <line x1="9" y1="21" x2="19" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
     </svg>
+  );
+}
+
+function UserFooter() {
+  const [, navigate] = useLocation();
+  const { data: user } = useQuery<{ id: number; name: string; email: string } | null>({
+    queryKey: ["/api/auth/me"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+    retry: false,
+    staleTime: Infinity,
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/auth/logout"),
+    onSuccess: () => {
+      queryClient.clear();
+      navigate("/login");
+    },
+  });
+
+  if (!user) return null;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground text-center truncate">{user.name}</p>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full text-muted-foreground hover:text-destructive"
+        onClick={() => logoutMutation.mutate()}
+        data-testid="button-logout"
+      >
+        <LogOut className="h-4 w-4 mr-2" />
+        Sign Out
+      </Button>
+    </div>
   );
 }
 
@@ -97,10 +149,8 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
-        <p className="text-xs text-muted-foreground text-center">
-          Subscriber #1 — The Foss Family
-        </p>
+      <SidebarFooter className="p-4 space-y-2">
+        <UserFooter />
       </SidebarFooter>
     </Sidebar>
   );

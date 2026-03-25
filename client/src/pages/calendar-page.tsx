@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, MapPin, Calendar as CalendarIcon, RefreshCw } from "lucide-react";
 import {
   format,
   startOfMonth,
@@ -30,9 +30,11 @@ import {
   parseISO,
 } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Family, FamilyMember, CalendarEvent } from "@shared/schema";
 
 export default function CalendarPage() {
+  const { toast } = useToast();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newEvent, setNewEvent] = useState({
@@ -61,6 +63,7 @@ export default function CalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       setDialogOpen(false);
       setNewEvent({ title: "", description: "", startDate: "", endDate: "", location: "" });
+      toast({ title: "Event added", description: "Your event has been added to the calendar." });
     },
   });
 
@@ -101,13 +104,37 @@ export default function CalendarPage() {
     });
   };
 
+  const syncCalendar = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/calendar/sync");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Coming Soon",
+        description: "Google Calendar sync is not yet configured. Stay tuned!",
+      });
+    },
+  });
+
+  const sourceBadge = (source: string) => {
+    switch (source) {
+      case "google":
+        return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 text-[10px]">Google</Badge>;
+      case "school":
+        return <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-[10px]">School</Badge>;
+      default:
+        return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[10px]">Manual</Badge>;
+    }
+  };
+
   const upcomingEvents = (events || [])
     .filter((e) => parseISO(e.startDate) >= new Date())
     .sort((a, b) => parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime())
     .slice(0, 8);
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto" data-testid="calendar-page">
+    <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto page-enter" data-testid="calendar-page">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-xl font-bold">Calendar</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -258,6 +285,28 @@ export default function CalendarPage() {
         </CardContent>
       </Card>
 
+      {/* Google Calendar Sync */}
+      <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800" data-testid="google-calendar-card">
+        <CardContent className="py-4 px-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Connect Google Calendar</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Sync your family's Google Calendar events automatically.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncCalendar.mutate()}
+            disabled={syncCalendar.isPending}
+            data-testid="button-sync-google"
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Connect
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Upcoming events */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
@@ -268,7 +317,17 @@ export default function CalendarPage() {
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}
           </div>
         ) : upcomingEvents.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No upcoming events. Add one!</p>
+          <Card>
+            <CardContent className="py-16 text-center">
+              <CalendarIcon className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
+              <h3 className="font-semibold text-lg mb-1">No events this week</h3>
+              <p className="text-sm text-muted-foreground mb-4">Your family's schedule will appear here.</p>
+              <Button onClick={() => setDialogOpen(true)} data-testid="button-first-event">
+                <Plus className="h-4 w-4 mr-2" />
+                Add First Event
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-2">
             {upcomingEvents.map((ev) => {
@@ -278,11 +337,14 @@ export default function CalendarPage() {
                   ).filter(Boolean)
                 : [];
               return (
-                <Card key={ev.id} data-testid={`event-card-${ev.id}`}>
+                <Card key={ev.id} className="card-hover" data-testid={`event-card-${ev.id}`}>
                   <CardContent className="py-3 px-4">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-medium text-sm">{ev.title}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm">{ev.title}</p>
+                          {sourceBadge(ev.source)}
+                        </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {format(parseISO(ev.startDate), "EEE, MMM d 'at' h:mm a")}
                         </p>
