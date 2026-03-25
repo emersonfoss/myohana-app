@@ -124,6 +124,37 @@ export const chatMessages = sqliteTable("chat_messages", {
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
 });
 
+export const memoryAtoms = sqliteTable("memory_atoms", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  sourceType: text("source_type").notNull(), // photo, message, event, pulse, milestone, chat
+  sourceId: integer("source_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  memberIds: text("member_ids"), // JSON array of member IDs involved
+  createdById: integer("created_by_id"),
+  category: text("category").notNull().default("daily_life"), // daily_life, milestone, celebration, family_time, school, travel, holiday, tender_moment, funny, creative
+  emotionalTone: text("emotional_tone").notNull().default("joyful"), // joyful, tender, proud, playful, bittersweet, grateful, peaceful, excited
+  occurredAt: text("occurred_at").notNull(),
+  metadata: text("metadata"), // JSON — flexible storage for source-specific data
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+});
+
+export const memoryCompilations = sqliteTable("memory_compilations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  type: text("type").notNull(), // weekly, monthly, yearly, custom, on_this_day, legacy
+  title: text("title").notNull(),
+  narrative: text("narrative"), // AI-generated warm narrative text
+  coverAtomId: integer("cover_atom_id"),
+  atomIds: text("atom_ids"), // JSON array of memory atom IDs in order
+  perspectiveMemberId: integer("perspective_member_id"), // nullable — for Personal Lens
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  generatedAt: text("generated_at").notNull(),
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+});
+
 export const subscriptions = sqliteTable("subscriptions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   familyId: integer("family_id").notNull(),
@@ -150,6 +181,8 @@ export const insertUserSchema = createInsertSchema(users).omit({ id: true, creat
 export const insertInviteCodeSchema = createInsertSchema(inviteCodes).omit({ id: true, createdAt: true });
 export const insertLocationSchema = createInsertSchema(locations).omit({ id: true, updatedAt: true });
 export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ id: true, createdAt: true });
+export const insertMemoryAtomSchema = createInsertSchema(memoryAtoms).omit({ id: true, createdAt: true });
+export const insertMemoryCompilationSchema = createInsertSchema(memoryCompilations).omit({ id: true, createdAt: true });
 export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true, createdAt: true });
 
 // Insert types
@@ -165,6 +198,8 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertInviteCode = z.infer<typeof insertInviteCodeSchema>;
 export type InsertLocation = z.infer<typeof insertLocationSchema>;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type InsertMemoryAtom = z.infer<typeof insertMemoryAtomSchema>;
+export type InsertMemoryCompilation = z.infer<typeof insertMemoryCompilationSchema>;
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 
 // Select types
@@ -180,4 +215,6 @@ export type User = typeof users.$inferSelect;
 export type InviteCode = typeof inviteCodes.$inferSelect;
 export type Location = typeof locations.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
+export type MemoryAtom = typeof memoryAtoms.$inferSelect;
+export type MemoryCompilation = typeof memoryCompilations.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;

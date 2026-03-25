@@ -12,6 +12,7 @@ import createMemoryStore from "memorystore";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { seedDatabase } from "./seed";
+import { memoryEngine } from "./memory-engine";
 import {
   insertMessageSchema,
   insertVaultDocumentSchema,
@@ -342,6 +343,12 @@ export async function registerRoutes(
     try {
       const parsed = insertMessageSchema.parse(req.body);
       const message = await storage.createMessage(parsed);
+      // Auto-ingest into memory
+      const family = await storage.getFamily();
+      if (family) {
+        const members = await storage.getFamilyMembers(family.id);
+        memoryEngine.ingestMessage(message, members).catch(() => {});
+      }
       res.status(201).json(message);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Invalid message data" });
@@ -398,6 +405,12 @@ export async function registerRoutes(
     try {
       const parsed = insertCalendarEventSchema.parse(req.body);
       const event = await storage.createCalendarEvent(parsed);
+      // Auto-ingest into memory
+      const family = await storage.getFamily();
+      if (family) {
+        const members = await storage.getFamilyMembers(family.id);
+        memoryEngine.ingestEvent(event, members).catch(() => {});
+      }
       res.status(201).json(event);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Invalid event data" });
@@ -467,6 +480,10 @@ export async function registerRoutes(
           senderEmoji: sender?.emoji || "💛",
         });
       }
+      // Auto-ingest into memory
+      if (family) {
+        memoryEngine.ingestPulse(pulse, members).catch(() => {});
+      }
       res.status(201).json(pulse);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Invalid pulse data" });
@@ -490,6 +507,12 @@ export async function registerRoutes(
     try {
       const parsed = insertPhotoSchema.parse(req.body);
       const photo = await storage.createPhoto(parsed);
+      // Auto-ingest into memory
+      const family = await storage.getFamily();
+      if (family) {
+        const members = await storage.getFamilyMembers(family.id);
+        memoryEngine.ingestPhoto(photo, members).catch(() => {});
+      }
       res.status(201).json(photo);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Invalid photo data" });
@@ -511,6 +534,12 @@ export async function registerRoutes(
         takenAt: req.body.takenAt || null,
       });
       const photo = await storage.createPhoto(parsed);
+      // Auto-ingest into memory
+      const family = await storage.getFamily();
+      if (family) {
+        const members = await storage.getFamilyMembers(family.id);
+        memoryEngine.ingestPhoto(photo, members).catch(() => {});
+      }
       res.status(201).json(photo);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Failed to upload photo" });
@@ -640,6 +669,157 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to generate weekly compilation" });
+    }
+  });
+
+  // ─── Memory API Routes ─────────────────────────────────────────────
+
+  // Timeline — paginated memory atoms
+  app.get("/api/memories/timeline", async (req, res) => {
+    try {
+      const family = await storage.getFamily();
+      if (!family) return res.status(404).json({ message: "No family found" });
+      const page = Number(req.query.page) || 1;
+      const limit = Math.min(Number(req.query.limit) || 20, 100);
+      const offset = (page - 1) * limit;
+      const memberId = req.query.memberId ? Number(req.query.memberId) : undefined;
+      const memberIdsParam = req.query.memberIds as string | undefined;
+      const memberIds = memberIdsParam ? memberIdsParam.split(",").map(Number) : undefined;
+      const category = req.query.category as string | undefined;
+      const atoms = await storage.getMemoryAtoms(family.id, {
+        limit, offset, memberId, memberIds, category,
+      });
+      res.json(atoms);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch timeline" });
+    }
+  });
+
+  // Search memories
+  app.get("/api/memories/search", async (req, res) => {
+    try {
+      const family = await storage.getFamily();
+      if (!family) return res.status(404).json({ message: "No family found" });
+      const q = req.query.q as string;
+      if (!q) return res.json([]);
+      const results = await memoryEngine.searchMemories(family.id, q);
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to search memories" });
+    }
+  });
+
+  // On This Day
+  app.get("/api/memories/on-this-day", async (req, res) => {
+    try {
+      const family = await storage.getFamily();
+      if (!family) return res.status(404).json({ message: "No family found" });
+      const date = (req.query.date as string) || new Date().toISOString();
+      const atoms = await memoryEngine.getOnThisDay(family.id, date);
+      res.json(atoms);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch on-this-day memories" });
+    }
+  });
+
+  // Get all compilations
+  app.get("/api/memories/compilations", async (_req, res) => {
+    try {
+      const family = await storage.getFamily();
+      if (!family) return res.status(404).json({ message: "No family found" });
+      const compilations = await storage.getMemoryCompilations(family.id);
+      res.json(compilations);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch compilations" });
+    }
+  });
+
+  // Get specific compilation with its atoms
+  app.get("/api/memories/compilations/:id", async (req, res) => {
+    try {
+      const compilation = await storage.getMemoryCompilation(Number(req.params.id));
+      if (!compilation) return res.status(404).json({ message: "Compilation not found" });
+      const atomIds: number[] = compilation.atomIds ? JSON.parse(compilation.atomIds) : [];
+      const atoms: any[] = [];
+      for (const id of atomIds) {
+        const atom = await storage.getMemoryAtom(id);
+        if (atom) atoms.push(atom);
+      }
+      res.json({ ...compilation, atoms });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch compilation" });
+    }
+  });
+
+  // Generate a new compilation
+  app.post("/api/memories/compilations/generate", async (req, res) => {
+    try {
+      const family = await storage.getFamily();
+      if (!family) return res.status(404).json({ message: "No family found" });
+      const { type, startDate, endDate, perspectiveMemberId } = req.body;
+      if (!type || !startDate || !endDate) {
+        return res.status(400).json({ message: "type, startDate, endDate required" });
+      }
+      let compilation;
+      if (type === "weekly") {
+        compilation = await memoryEngine.generateWeeklyCompilation(family.id, startDate, endDate);
+      } else if (type === "monthly") {
+        const d = new Date(startDate);
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        compilation = await memoryEngine.generateMonthlyCompilation(family.id, monthNames[d.getMonth()], d.getFullYear());
+      } else {
+        // Custom compilation
+        const atoms = await storage.getMemoryAtomsByDateRange(family.id, startDate, endDate);
+        const members = await storage.getFamilyMembers(family.id);
+        compilation = await storage.createMemoryCompilation({
+          familyId: family.id,
+          type: "custom",
+          title: `${new Date(startDate).toLocaleDateString()} — ${new Date(endDate).toLocaleDateString()}`,
+          narrative: memoryEngine.generateNarrative(atoms, family, members, "time period"),
+          coverAtomId: atoms.find(a => a.sourceType === "photo")?.id || null,
+          atomIds: JSON.stringify(atoms.map(a => a.id)),
+          perspectiveMemberId: perspectiveMemberId || null,
+          periodStart: startDate,
+          periodEnd: endDate,
+          generatedAt: new Date().toISOString(),
+        });
+      }
+      res.status(201).json(compilation);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to generate compilation" });
+    }
+  });
+
+  // Memory statistics
+  app.get("/api/memories/stats", async (_req, res) => {
+    try {
+      const family = await storage.getFamily();
+      if (!family) return res.status(404).json({ message: "No family found" });
+      const stats = await storage.getMemoryStats(family.id);
+      // Also get the earliest memory for "growing since" info
+      const atoms = await storage.getMemoryAtoms(family.id, { limit: 1 });
+      const allAtoms = await storage.getMemoryAtoms(family.id, { limit: 10000 });
+      const earliest = allAtoms.length > 0
+        ? allAtoms.reduce((e, a) => a.occurredAt < e.occurredAt ? a : e)
+        : null;
+      res.json({
+        ...stats,
+        growingSince: earliest?.occurredAt || new Date().toISOString(),
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch memory stats" });
+    }
+  });
+
+  // Ingest all existing content (one-time bootstrap)
+  app.post("/api/memories/ingest-all", async (_req, res) => {
+    try {
+      const family = await storage.getFamily();
+      if (!family) return res.status(404).json({ message: "No family found" });
+      const count = await memoryEngine.ingestAllExisting(family.id);
+      res.json({ ingested: count });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to ingest memories" });
     }
   });
 

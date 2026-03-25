@@ -12,6 +12,8 @@ import {
   type Location, type InsertLocation, locations,
   type Subscription, type InsertSubscription, subscriptions,
   type ChatMessage, type InsertChatMessage, chatMessages,
+  type MemoryAtom, type InsertMemoryAtom, memoryAtoms,
+  type MemoryCompilation, type InsertMemoryCompilation, memoryCompilations,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -49,6 +51,35 @@ sqlite.exec(`
     content TEXT NOT NULL,
     external_id TEXT,
     imported_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS memory_atoms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    source_type TEXT NOT NULL,
+    source_id INTEGER,
+    title TEXT NOT NULL,
+    description TEXT,
+    member_ids TEXT,
+    created_by_id INTEGER,
+    category TEXT NOT NULL DEFAULT 'daily_life',
+    emotional_tone TEXT NOT NULL DEFAULT 'joyful',
+    occurred_at TEXT NOT NULL,
+    metadata TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS memory_compilations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    narrative TEXT,
+    cover_atom_id INTEGER,
+    atom_ids TEXT,
+    perspective_member_id INTEGER,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS subscriptions (
@@ -128,6 +159,27 @@ export interface IStorage {
   // Chat messages
   getChatMessages(familyId: number, limit?: number): Promise<ChatMessage[]>;
   createChatMessage(msg: InsertChatMessage): Promise<ChatMessage>;
+
+  // Memory Atoms
+  getMemoryAtoms(familyId: number, options?: {
+    limit?: number; offset?: number;
+    memberId?: number; memberIds?: number[];
+    category?: string; sourceType?: string;
+  }): Promise<MemoryAtom[]>;
+  getMemoryAtom(id: number): Promise<MemoryAtom | undefined>;
+  createMemoryAtom(atom: InsertMemoryAtom): Promise<MemoryAtom>;
+  searchMemoryAtoms(familyId: number, query: string): Promise<MemoryAtom[]>;
+  getMemoryAtomsByDateRange(familyId: number, start: string, end: string): Promise<MemoryAtom[]>;
+  getMemoryAtomsBySourceType(familyId: number, sourceType: string, sourceId: number): Promise<MemoryAtom[]>;
+  getMemoryStats(familyId: number): Promise<{
+    totalAtoms: number; byCategory: Record<string, number>;
+    byMember: Record<number, number>; bySourceType: Record<string, number>;
+  }>;
+
+  // Memory Compilations
+  getMemoryCompilations(familyId: number): Promise<MemoryCompilation[]>;
+  getMemoryCompilation(id: number): Promise<MemoryCompilation | undefined>;
+  createMemoryCompilation(comp: InsertMemoryCompilation): Promise<MemoryCompilation>;
 
   // Subscriptions
   getSubscription(familyId: number): Promise<Subscription | undefined>;
@@ -327,6 +379,118 @@ export class DatabaseStorage implements IStorage {
 
   async createChatMessage(msg: InsertChatMessage): Promise<ChatMessage> {
     return db.insert(chatMessages).values(msg).returning().get();
+  }
+
+  // Memory Atoms
+  async getMemoryAtoms(familyId: number, options?: {
+    limit?: number; offset?: number;
+    memberId?: number; memberIds?: number[];
+    category?: string; sourceType?: string;
+  }): Promise<MemoryAtom[]> {
+    let results = db.select().from(memoryAtoms)
+      .where(eq(memoryAtoms.familyId, familyId))
+      .orderBy(desc(memoryAtoms.occurredAt))
+      .all();
+
+    if (options?.memberId) {
+      const mid = options.memberId;
+      results = results.filter(a => {
+        if (!a.memberIds) return false;
+        const ids: number[] = JSON.parse(a.memberIds);
+        return ids.includes(mid);
+      });
+    }
+    if (options?.memberIds && options.memberIds.length > 0) {
+      const mids = options.memberIds;
+      results = results.filter(a => {
+        if (!a.memberIds) return false;
+        const ids: number[] = JSON.parse(a.memberIds);
+        return mids.every(mid => ids.includes(mid));
+      });
+    }
+    if (options?.category) {
+      results = results.filter(a => a.category === options.category);
+    }
+    if (options?.sourceType) {
+      results = results.filter(a => a.sourceType === options.sourceType);
+    }
+    const offset = options?.offset || 0;
+    const limit = options?.limit || 20;
+    return results.slice(offset, offset + limit);
+  }
+
+  async getMemoryAtom(id: number): Promise<MemoryAtom | undefined> {
+    return db.select().from(memoryAtoms).where(eq(memoryAtoms.id, id)).get();
+  }
+
+  async createMemoryAtom(atom: InsertMemoryAtom): Promise<MemoryAtom> {
+    return db.insert(memoryAtoms).values(atom).returning().get();
+  }
+
+  async searchMemoryAtoms(familyId: number, query: string): Promise<MemoryAtom[]> {
+    const all = db.select().from(memoryAtoms)
+      .where(eq(memoryAtoms.familyId, familyId))
+      .orderBy(desc(memoryAtoms.occurredAt))
+      .all();
+    const q = query.toLowerCase();
+    return all.filter(a =>
+      a.title.toLowerCase().includes(q) ||
+      (a.description && a.description.toLowerCase().includes(q)) ||
+      (a.metadata && a.metadata.toLowerCase().includes(q))
+    );
+  }
+
+  async getMemoryAtomsByDateRange(familyId: number, start: string, end: string): Promise<MemoryAtom[]> {
+    return db.select().from(memoryAtoms)
+      .where(eq(memoryAtoms.familyId, familyId))
+      .orderBy(desc(memoryAtoms.occurredAt))
+      .all()
+      .filter(a => a.occurredAt >= start && a.occurredAt <= end);
+  }
+
+  async getMemoryAtomsBySourceType(familyId: number, sourceType: string, sourceId: number): Promise<MemoryAtom[]> {
+    return db.select().from(memoryAtoms)
+      .where(eq(memoryAtoms.familyId, familyId))
+      .all()
+      .filter(a => a.sourceType === sourceType && a.sourceId === sourceId);
+  }
+
+  async getMemoryStats(familyId: number): Promise<{
+    totalAtoms: number; byCategory: Record<string, number>;
+    byMember: Record<number, number>; bySourceType: Record<string, number>;
+  }> {
+    const all = db.select().from(memoryAtoms)
+      .where(eq(memoryAtoms.familyId, familyId)).all();
+    const byCategory: Record<string, number> = {};
+    const byMember: Record<number, number> = {};
+    const bySourceType: Record<string, number> = {};
+    for (const a of all) {
+      byCategory[a.category] = (byCategory[a.category] || 0) + 1;
+      bySourceType[a.sourceType] = (bySourceType[a.sourceType] || 0) + 1;
+      if (a.memberIds) {
+        const ids: number[] = JSON.parse(a.memberIds);
+        for (const id of ids) {
+          byMember[id] = (byMember[id] || 0) + 1;
+        }
+      }
+    }
+    return { totalAtoms: all.length, byCategory, byMember, bySourceType };
+  }
+
+  // Memory Compilations
+  async getMemoryCompilations(familyId: number): Promise<MemoryCompilation[]> {
+    return db.select().from(memoryCompilations)
+      .where(eq(memoryCompilations.familyId, familyId))
+      .orderBy(desc(memoryCompilations.generatedAt))
+      .all();
+  }
+
+  async getMemoryCompilation(id: number): Promise<MemoryCompilation | undefined> {
+    return db.select().from(memoryCompilations).where(eq(memoryCompilations.id, id)).get();
+  }
+
+  async createMemoryCompilation(comp: InsertMemoryCompilation): Promise<MemoryCompilation> {
+    return db.insert(memoryCompilations).values(comp).returning().get();
   }
 
   // Subscriptions

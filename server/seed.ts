@@ -1,7 +1,8 @@
 import { db } from "./storage";
 import {
-  families, familyMembers, messages, vaultDocuments, mediaItems, calendarEvents, locations, subscriptions, chatMessages
+  families, familyMembers, messages, vaultDocuments, mediaItems, calendarEvents, locations, subscriptions, chatMessages, thinkingOfYou
 } from "@shared/schema";
+import { memoryEngine } from "./memory-engine";
 
 export async function seedDatabase() {
   // Check if the family already exists
@@ -293,6 +294,43 @@ export async function seedDatabase() {
     content: "Daddy I made a painting for you!",
     createdAt: new Date(twoHoursAgo.getTime() + 60 * 60 * 1000).toISOString(),
   }).run();
+
+  // Seed thinking of you pulses
+  db.insert(thinkingOfYou).values({
+    familyId: family.id,
+    senderId: dad.id,
+    recipientId: emmy.id,
+    createdAt: new Date(now.getTime() - 3 * 60 * 60 * 1000).toISOString(),
+  }).run();
+
+  db.insert(thinkingOfYou).values({
+    familyId: family.id,
+    senderId: dad.id,
+    recipientId: scarlett.id,
+    createdAt: new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString(),
+  }).run();
+
+  db.insert(thinkingOfYou).values({
+    familyId: family.id,
+    senderId: mom.id,
+    recipientId: baby.id,
+    createdAt: new Date(now.getTime() - 1 * 60 * 60 * 1000).toISOString(),
+  }).run();
+
+  // Seed memory atoms from all existing content
+  console.log("Ingesting seed content into Memory Atoms...");
+  try {
+    const count = await memoryEngine.ingestAllExisting(family.id);
+    console.log(`  Ingested ${count} memory atoms from seed data`);
+
+    // Generate a sample weekly compilation
+    const weekEnd = now.toISOString();
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    await memoryEngine.generateWeeklyCompilation(family.id, weekStart, weekEnd);
+    console.log("  Generated sample weekly compilation");
+  } catch (err) {
+    console.log("  Memory ingestion skipped (non-fatal):", err);
+  }
 
   console.log("Database seeded successfully!");
 }
