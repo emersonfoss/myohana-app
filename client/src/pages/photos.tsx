@@ -257,7 +257,7 @@ export default function Photos() {
 
       {/* Photo Grid — Masonry with CSS columns */}
       {isLoading ? (
-        <div className="columns-2 sm:columns-3 gap-4 space-y-4">
+        <div className="columns-1 sm:columns-2 md:columns-3 gap-4 space-y-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <Skeleton key={i} className="h-48 rounded-lg break-inside-avoid" />
           ))}
@@ -277,7 +277,7 @@ export default function Photos() {
           </CardContent>
         </Card>
       ) : (
-        <div className="columns-2 sm:columns-3 gap-4 space-y-4">
+        <div className="columns-1 sm:columns-2 md:columns-3 gap-4 space-y-4">
           {filteredPhotos.map((photo, idx) => {
             const uploader = members.find((m) => m.id === photo.uploadedById);
             return (

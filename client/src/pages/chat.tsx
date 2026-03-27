@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Send, MessageSquare, Smartphone, MessageCircle as WhatsAppIcon, Phone } from "lucide-react";
+import { Send, MessageSquare } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, parseISO } from "date-fns";
 import type { ChatMessage } from "@shared/schema";
@@ -71,29 +71,17 @@ export default function Chat() {
         </p>
       </div>
 
-      {/* Connection banner */}
+      {/* Internal chat banner */}
       <div className="px-4 sm:px-6 pb-3">
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="py-3 px-4">
-            <p className="text-sm text-muted-foreground">
-              Connect your messaging apps to bring all family conversations here.
-            </p>
-            <div className="flex gap-2 mt-3 flex-wrap">
-              <div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 border">
-                <Smartphone className="h-4 w-4 text-blue-500" />
-                <span className="text-xs font-medium">iMessage</span>
-                <Badge variant="secondary" className="text-[10px]" data-testid="badge-imessage">Coming Soon</Badge>
-              </div>
-              <div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 border">
-                <WhatsAppIcon className="h-4 w-4 text-green-500" />
-                <span className="text-xs font-medium">WhatsApp</span>
-                <Badge variant="secondary" className="text-[10px]" data-testid="badge-whatsapp">Coming Soon</Badge>
-              </div>
-              <div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 border">
-                <Phone className="h-4 w-4 text-orange-500" />
-                <span className="text-xs font-medium">SMS</span>
-                <Badge variant="secondary" className="text-[10px]" data-testid="badge-sms">Coming Soon</Badge>
-              </div>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[10px]">
+                Internal
+              </Badge>
+              <p className="text-sm text-muted-foreground">
+                Family chat — messages stay within your MyOhana hub.
+              </p>
             </div>
           </CardContent>
         </Card>

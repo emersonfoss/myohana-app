@@ -24,26 +24,47 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-const navItems = [
-  { title: "Home", url: "/", icon: LayoutDashboard },
-  { title: "Family Pulse", url: "/pulse", icon: MapPin },
-  { title: "Messages", url: "/messages", icon: MessageCircle },
-  { title: "Chat Bridge", url: "/chat", icon: MessagesSquare },
-  { title: "Vault", url: "/vault", icon: Shield },
-  { title: "Calendar", url: "/calendar", icon: Calendar },
-  { title: "Media Room", url: "/media", icon: Play },
-  { title: "Thinking of You", url: "/thinking-of-you", icon: Heart },
-  { title: "Photos", url: "/photos", icon: Camera },
-  { title: "Memories", url: "/memories", icon: Sparkles },
-  { title: "Family", url: "/family", icon: Users },
-  { title: "Family Graph", url: "/graph", icon: Brain },
-  { title: "Settings", url: "/settings", icon: Settings },
+const navGroups = [
+  {
+    label: null,
+    items: [
+      { title: "Home", url: "/", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Communication",
+    items: [
+      { title: "Messages", url: "/messages", icon: MessageCircle },
+      { title: "Chat Bridge", url: "/chat", icon: MessagesSquare },
+      { title: "Thinking of You", url: "/thinking-of-you", icon: Heart },
+    ],
+  },
+  {
+    label: "Family",
+    items: [
+      { title: "Photos", url: "/photos", icon: Camera },
+      { title: "Memories", url: "/memories", icon: Sparkles },
+      { title: "Calendar", url: "/calendar", icon: Calendar },
+      { title: "Family Pulse", url: "/pulse", icon: MapPin },
+      { title: "Family", url: "/family", icon: Users },
+    ],
+  },
+  {
+    label: "Management",
+    items: [
+      { title: "Vault", url: "/vault", icon: Shield },
+      { title: "Media Room", url: "/media", icon: Play },
+      { title: "Family Graph", url: "/graph", icon: Brain },
+      { title: "Settings", url: "/settings", icon: Settings },
+    ],
+  },
 ];
 
 function OhanaLogo() {
@@ -123,30 +144,37 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                const isActive = location === item.url || 
-                  (item.url !== "/" && location.startsWith(item.url));
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      data-active={isActive}
-                      className={isActive ? "bg-primary/10 text-primary font-medium" : ""}
-                    >
-                      <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="shrink-0" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {navGroups.map((group, groupIdx) => (
+          <SidebarGroup key={groupIdx} className={groupIdx === 0 ? "" : "pt-2"}>
+            {group.label && (
+              <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold px-3">
+                {group.label}
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const isActive = location === item.url ||
+                    (item.url !== "/" && location.startsWith(item.url));
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        data-active={isActive}
+                        className={isActive ? "bg-primary/10 text-primary font-medium" : ""}
+                      >
+                        <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                          <item.icon className="shrink-0" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter className="p-4 space-y-2">

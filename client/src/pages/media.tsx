@@ -287,27 +287,55 @@ export default function Media() {
         )}
       </div>
 
-      {/* Books section (placeholder for future) */}
+      {/* Books section */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           Books
         </h2>
         {books.length === 0 ? (
           <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Book recommendations coming soon!</p>
+            <CardContent className="py-12 text-center">
+              <BookOpen className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
+              <h3 className="font-semibold text-sm mb-1">No books added yet</h3>
+              <p className="text-xs text-muted-foreground mb-3">Add a book for the family using the Add Media button above.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {books.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="py-3 px-3">
-                  <p className="font-medium text-sm">{item.title}</p>
-                </CardContent>
-              </Card>
-            ))}
+            {books.map((item) => {
+              const ages = item.approvedForAges ? JSON.parse(item.approvedForAges) : [];
+              return (
+                <Card key={item.id} className="card-hover" data-testid={`book-card-${item.id}`}>
+                  <CardContent className="py-3 px-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <p className="font-medium text-sm truncate">{item.title}</p>
+                        </div>
+                        {ages.length > 0 && (
+                          <div className="flex items-center gap-1 mt-1.5 ml-6">
+                            {ages.map((age: string, idx: number) => (
+                              <Badge key={idx} variant="outline" className="text-[10px]">
+                                {age}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => deleteMedia.mutate(item.id)}
+                        data-testid={`button-delete-book-${item.id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

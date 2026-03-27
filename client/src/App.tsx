@@ -8,7 +8,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
-import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sun, Moon } from "lucide-react";
@@ -117,7 +116,6 @@ function AppLayout() {
           <main className="flex-1 overflow-auto">
             <AppRouter />
           </main>
-          <PerplexityAttribution />
         </div>
       </div>
       <PWAInstallPrompt />
