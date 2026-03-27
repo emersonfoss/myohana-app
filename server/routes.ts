@@ -19,6 +19,7 @@ import { seedDatabase } from "./seed";
 import { memoryEngine } from "./memory-engine";
 import { stripe, isStripeConfigured, STRIPE_PRICES, STRIPE_WEBHOOK_SECRET } from "./stripe";
 import { sendEmail } from "./email";
+import { uploadFile, deleteFile, getSignedDownloadUrl, buildFileKey, isS3Configured } from "./storage-s3";
 import {
   insertMessageSchema,
   insertVaultDocumentSchema,
@@ -86,6 +87,26 @@ const upload = multer({
       cb(null, true);
     } else {
       cb(new Error("Only image files (JPEG, PNG, GIF, WebP) are allowed"));
+    }
+  },
+});
+
+// Configure multer for vault file uploads (25MB, restricted MIME types)
+const VAULT_ALLOWED_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
+const vaultUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+  fileFilter: (_req, file, cb) => {
+    if (VAULT_ALLOWED_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("File type not allowed. Accepted: PDF, JPEG, PNG, DOCX, XLSX"));
     }
   },
 });
@@ -601,24 +622,116 @@ export async function registerRoutes(
     }
   });
 
-  // Add vault document
-  app.post("/api/vault", async (req, res) => {
+  // Add vault document (supports multipart file upload or JSON metadata-only)
+  app.post("/api/vault", (req: Request, res: Response, next: NextFunction) => {
+    vaultUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        return res.status(400).json({ message: err.message || "File upload failed" });
+      }
+      next();
+    });
+  }, async (req: Request, res: Response) => {
     try {
-      const parsed = insertVaultDocumentSchema.parse(req.body);
-      const doc = await storage.createVaultDocument(parsed);
+      const familyId = Number(req.body.familyId);
+      const uploadedById = Number(req.body.uploadedById);
+      const name = req.body.name;
+      const category = req.body.category;
+      const description = req.body.description || null;
+      const expiresAt = req.body.expiresAt || null;
+
+      if (!familyId || !uploadedById || !name || !category) {
+        return res.status(400).json({ message: "Missing required fields: familyId, uploadedById, name, category" });
+      }
+
+      let fileUrl: string | null = null;
+      let fileKey: string | null = null;
+      let fileSize: number | null = null;
+      let mimeType: string | null = null;
+
+      if (req.file) {
+        const key = buildFileKey(familyId, req.file.originalname);
+        fileUrl = await uploadFile(key, req.file.buffer, req.file.mimetype);
+        fileKey = key;
+        fileSize = req.file.size;
+        mimeType = req.file.mimetype;
+      }
+
+      const doc = await storage.createVaultDocument({
+        familyId,
+        uploadedById,
+        name,
+        category,
+        description,
+        expiresAt,
+        fileUrl,
+        fileKey,
+        fileSize,
+        mimeType,
+      });
       res.status(201).json(doc);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Invalid document data" });
     }
   });
 
-  // Delete vault document
+  // Download vault document file
+  app.get("/api/vault/:id/download", async (req: Request, res: Response) => {
+    try {
+      const doc = await storage.getVaultDocument(Number(req.params.id));
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+
+      // Verify family ownership
+      const user = req.user as Express.User;
+      if (user && doc.familyId !== user.familyId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      if (!doc.fileKey) {
+        return res.status(404).json({ message: "No file attached to this document" });
+      }
+
+      const downloadUrl = await getSignedDownloadUrl(doc.fileKey, 900);
+      res.json({ downloadUrl });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to generate download URL" });
+    }
+  });
+
+  // Delete vault document (with file cleanup)
   app.delete("/api/vault/:id", async (req, res) => {
     try {
+      const doc = await storage.getVaultDocument(Number(req.params.id));
+      if (doc && doc.fileKey) {
+        try {
+          await deleteFile(doc.fileKey);
+        } catch (err) {
+          console.error("Failed to delete file from storage, orphaned:", doc.fileKey, err);
+        }
+      }
       await storage.deleteVaultDocument(Number(req.params.id));
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  // Serve vault files (local fallback) — authenticated route
+  app.get("/api/vault-files/:familyId/:filename", async (req: Request, res: Response) => {
+    try {
+      const user = req.user as Express.User;
+      const familyId = Number(req.params.familyId);
+      if (user && user.familyId !== familyId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const safeName = path.basename(req.params.filename);
+      const filePath = path.join(process.cwd(), "vault-uploads", String(familyId), safeName);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "File not found" });
+      }
+      res.sendFile(filePath);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to serve file" });
     }
   });
 

@@ -39,6 +39,10 @@ export const vaultDocuments = sqliteTable("vault_documents", {
   category: text("category").notNull(), // legal, health, insurance, identity, financial
   description: text("description"),
   expiresAt: text("expires_at"),
+  fileUrl: text("file_url"),
+  fileKey: text("file_key"),
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
 });
 
