@@ -293,10 +293,6 @@ export class DatabaseStorage implements IStorage {
     return db.insert(vaultDocuments).values(doc).returning().get();
   }
 
-  async getVaultDocument(id: number): Promise<VaultDocument | undefined> {
-    return db.select().from(vaultDocuments).where(eq(vaultDocuments.id, id)).get();
-  }
-
   async deleteVaultDocument(id: number): Promise<void> {
     db.delete(vaultDocuments).where(eq(vaultDocuments.id, id)).run();
   }
