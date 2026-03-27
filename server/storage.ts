@@ -117,6 +117,12 @@ sqlite.exec(`
   );
 `);
 
+// Add file columns to vault_documents if they don't exist (Sprint 3 migration)
+try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN file_url TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN file_key TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN file_size INTEGER`); } catch {}
+try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN mime_type TEXT`); } catch {}
+
 export interface IStorage {
   // Family
   getFamily(): Promise<Family | undefined>;
@@ -132,6 +138,7 @@ export interface IStorage {
 
   // Vault
   getVaultDocuments(familyId: number): Promise<VaultDocument[]>;
+  getVaultDocument(id: number): Promise<VaultDocument | undefined>;
   createVaultDocument(doc: InsertVaultDocument): Promise<VaultDocument>;
   getVaultDocument(id: number): Promise<VaultDocument | undefined>;
   deleteVaultDocument(id: number): Promise<void>;
@@ -276,6 +283,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(vaultDocuments.familyId, familyId))
       .orderBy(desc(vaultDocuments.createdAt))
       .all();
+  }
+
+  async getVaultDocument(id: number): Promise<VaultDocument | undefined> {
+    return db.select().from(vaultDocuments).where(eq(vaultDocuments.id, id)).get();
   }
 
   async createVaultDocument(doc: InsertVaultDocument): Promise<VaultDocument> {
