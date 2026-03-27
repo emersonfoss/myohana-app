@@ -168,6 +168,15 @@ export const subscriptions = sqliteTable("subscriptions", {
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
 });
 
+export const passwordResetTokens = sqliteTable("password_reset_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  token: text("token").notNull().unique(),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+});
+
 // Insert schemas
 export const insertFamilySchema = createInsertSchema(families).omit({ id: true, createdAt: true });
 export const insertFamilyMemberSchema = createInsertSchema(familyMembers).omit({ id: true, createdAt: true });
@@ -184,6 +193,7 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ i
 export const insertMemoryAtomSchema = createInsertSchema(memoryAtoms).omit({ id: true, createdAt: true });
 export const insertMemoryCompilationSchema = createInsertSchema(memoryCompilations).omit({ id: true, createdAt: true });
 export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true, createdAt: true });
+export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({ id: true, createdAt: true });
 
 // Insert types
 export type InsertFamily = z.infer<typeof insertFamilySchema>;
@@ -201,6 +211,7 @@ export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 export type InsertMemoryAtom = z.infer<typeof insertMemoryAtomSchema>;
 export type InsertMemoryCompilation = z.infer<typeof insertMemoryCompilationSchema>;
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
 
 // Select types
 export type Family = typeof families.$inferSelect;
@@ -218,3 +229,4 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type MemoryAtom = typeof memoryAtoms.$inferSelect;
 export type MemoryCompilation = typeof memoryCompilations.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;

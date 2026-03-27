@@ -14,6 +14,7 @@ import {
   type ChatMessage, type InsertChatMessage, chatMessages,
   type MemoryAtom, type InsertMemoryAtom, memoryAtoms,
   type MemoryCompilation, type InsertMemoryCompilation, memoryCompilations,
+  type PasswordResetToken, type InsertPasswordResetToken, passwordResetTokens,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -92,6 +93,14 @@ sqlite.exec(`
     expires_at TEXT,
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
@@ -187,6 +196,19 @@ export interface IStorage {
   createSubscription(sub: InsertSubscription): Promise<Subscription>;
   updateSubscriptionStatus(id: number, status: string): Promise<Subscription | undefined>;
   updateSubscription(id: number, fields: Partial<InsertSubscription & { status: string }>): Promise<Subscription | undefined>;
+
+  // Password Reset Tokens
+  createPasswordResetToken(data: InsertPasswordResetToken): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  markPasswordResetTokenUsed(id: number): Promise<void>;
+
+  // User updates
+  updateUserPassword(userId: number, hashedPassword: string): Promise<void>;
+  getUsersByFamily(familyId: number): Promise<User[]>;
+  deleteUser(userId: number): Promise<void>;
+
+  // Cascade delete
+  deleteFamilyData(familyId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -516,6 +538,51 @@ export class DatabaseStorage implements IStorage {
   async updateSubscription(id: number, fields: Partial<InsertSubscription & { status: string }>): Promise<Subscription | undefined> {
     db.update(subscriptions).set(fields).where(eq(subscriptions.id, id)).run();
     return db.select().from(subscriptions).where(eq(subscriptions.id, id)).get();
+  }
+
+  // Password Reset Tokens
+  async createPasswordResetToken(data: InsertPasswordResetToken): Promise<PasswordResetToken> {
+    return db.insert(passwordResetTokens).values(data).returning().get();
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    return db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token)).get();
+  }
+
+  async markPasswordResetTokenUsed(id: number): Promise<void> {
+    db.update(passwordResetTokens).set({ usedAt: new Date().toISOString() }).where(eq(passwordResetTokens.id, id)).run();
+  }
+
+  // User updates
+  async updateUserPassword(userId: number, hashedPassword: string): Promise<void> {
+    db.update(users).set({ password: hashedPassword }).where(eq(users.id, userId)).run();
+  }
+
+  async getUsersByFamily(familyId: number): Promise<User[]> {
+    return db.select().from(users).where(eq(users.familyId, familyId)).all();
+  }
+
+  async deleteUser(userId: number): Promise<void> {
+    db.delete(users).where(eq(users.id, userId)).run();
+  }
+
+  // Cascade delete all family data
+  async deleteFamilyData(familyId: number): Promise<void> {
+    db.delete(messages).where(eq(messages.familyId, familyId)).run();
+    db.delete(vaultDocuments).where(eq(vaultDocuments.familyId, familyId)).run();
+    db.delete(calendarEvents).where(eq(calendarEvents.familyId, familyId)).run();
+    db.delete(mediaItems).where(eq(mediaItems.familyId, familyId)).run();
+    db.delete(thinkingOfYou).where(eq(thinkingOfYou.familyId, familyId)).run();
+    db.delete(photos).where(eq(photos.familyId, familyId)).run();
+    db.delete(locations).where(eq(locations.familyId, familyId)).run();
+    db.delete(chatMessages).where(eq(chatMessages.familyId, familyId)).run();
+    db.delete(memoryAtoms).where(eq(memoryAtoms.familyId, familyId)).run();
+    db.delete(memoryCompilations).where(eq(memoryCompilations.familyId, familyId)).run();
+    db.delete(subscriptions).where(eq(subscriptions.familyId, familyId)).run();
+    db.delete(inviteCodes).where(eq(inviteCodes.familyId, familyId)).run();
+    db.delete(users).where(eq(users.familyId, familyId)).run();
+    db.delete(familyMembers).where(eq(familyMembers.familyId, familyId)).run();
+    db.delete(families).where(eq(families.id, familyId)).run();
   }
 }
 

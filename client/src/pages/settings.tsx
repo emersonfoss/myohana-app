@@ -16,9 +16,20 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink, Download } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import type { Family, FamilyMember } from "@shared/schema";
 
@@ -42,7 +53,51 @@ interface AppConfig {
 
 export default function Settings() {
   const [copied, setCopied] = useState(false);
+  const [, navigate] = useLocation();
   const { toast } = useToast();
+
+  // Change password state
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+
+  // Delete account state
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState("");
+
+  const changePasswordMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/auth/change-password", {
+        currentPassword,
+        newPassword,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Success", description: data.message || "Password changed successfully" });
+      setChangePasswordOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/account", { confirmEmail: deleteConfirmEmail });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.clear();
+      navigate("/login");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   const { data: user } = useQuery<{ id: number; name: string; email: string; familyId: number; role: string } | null>({
     queryKey: ["/api/auth/me"],
@@ -374,16 +429,107 @@ export default function Settings() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" disabled data-testid="button-change-password">
-              Change Password
-            </Button>
-            <Button variant="outline" size="sm" disabled data-testid="button-export-data">
+            {/* Change Password Dialog */}
+            <Dialog open={changePasswordOpen} onOpenChange={(open) => {
+              setChangePasswordOpen(open);
+              if (!open) { setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword(""); }
+            }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-change-password">
+                  Change Password
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Change Password</DialogTitle>
+                  <DialogDescription>
+                    Enter your current password and choose a new one.
+                  </DialogDescription>
+                </DialogHeader>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (newPassword !== confirmNewPassword) {
+                      toast({ title: "Error", description: "New passwords do not match", variant: "destructive" });
+                      return;
+                    }
+                    changePasswordMutation.mutate();
+                  }}
+                  className="space-y-4"
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      minLength={6}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
+                    <Input
+                      id="confirmNewPassword"
+                      type="password"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      required
+                      minLength={6}
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit" disabled={changePasswordMutation.isPending}>
+                      {changePasswordMutation.isPending ? "Changing..." : "Change Password"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            {/* Export Data */}
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="button-export-data"
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/export", { credentials: "include" });
+                  if (!res.ok) throw new Error("Export failed");
+                  const blob = await res.blob();
+                  const dateStr = new Date().toISOString().split("T")[0];
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `myohana-export-${dateStr}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  toast({ title: "Export complete", description: "Your data has been downloaded." });
+                } catch (err: any) {
+                  toast({ title: "Export failed", description: err.message, variant: "destructive" });
+                }
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
               Export Data
             </Button>
           </div>
 
           <div className="pt-2 border-t">
-            <AlertDialog>
+            <AlertDialog onOpenChange={(open) => { if (!open) setDeleteConfirmEmail(""); }}>
               <AlertDialogTrigger asChild>
                 <Button
                   variant="ghost"
@@ -400,15 +546,31 @@ export default function Settings() {
                   <AlertDialogTitle>Delete your account?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This action cannot be undone. All your family data, messages, photos, and documents will be permanently deleted.
+                    {user?.role === "admin" && (
+                      <span className="block mt-2 font-semibold text-destructive">
+                        You are the admin of this family. Deleting your account will delete all family data for every member.
+                      </span>
+                    )}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
+                <div className="space-y-2 py-2">
+                  <Label htmlFor="deleteConfirmEmail">Type your email to confirm</Label>
+                  <Input
+                    id="deleteConfirmEmail"
+                    type="email"
+                    value={deleteConfirmEmail}
+                    onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+                    placeholder={user?.email || ""}
+                  />
+                </div>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction
-                    disabled
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteConfirmEmail !== user?.email || deleteMutation.isPending}
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   >
-                    Delete (Coming Soon)
+                    {deleteMutation.isPending ? "Deleting..." : "Delete Account"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
