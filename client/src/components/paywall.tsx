@@ -1,5 +1,5 @@
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
@@ -14,16 +14,29 @@ const features = [
   "Weekly memory compilations",
 ];
 
+interface AppConfig {
+  stripePublishableKey: string | null;
+  billingEnabled: boolean;
+}
+
 export function Paywall() {
+  const { data: appConfig } = useQuery<AppConfig>({
+    queryKey: ["/api/config"],
+  });
+
   const subscribeMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/billing/subscribe", { plan: "family" });
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/billing"] });
+    onSuccess: (data) => {
+      if (data?.url) {
+        window.location.href = data.url;
+      }
     },
   });
+
+  const billingEnabled = appConfig?.billingEnabled ?? false;
 
   return (
     <Card className="max-w-md mx-auto border-primary/20" data-testid="paywall-card">
@@ -64,15 +77,21 @@ export function Paywall() {
           ))}
         </ul>
 
-        <Button
-          className="w-full"
-          size="lg"
-          onClick={() => subscribeMutation.mutate()}
-          disabled={subscribeMutation.isPending}
-          data-testid="button-paywall-subscribe"
-        >
-          {subscribeMutation.isPending ? "Activating..." : "Start Your Family Hub"}
-        </Button>
+        {billingEnabled ? (
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={() => subscribeMutation.mutate()}
+            disabled={subscribeMutation.isPending}
+            data-testid="button-paywall-subscribe"
+          >
+            {subscribeMutation.isPending ? "Redirecting to checkout..." : "Start Your Family Hub"}
+          </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">
+            Billing coming soon — Stripe is not yet configured.
+          </p>
+        )}
 
         <p className="text-xs text-muted-foreground">
           Cancel anytime. No commitments.
