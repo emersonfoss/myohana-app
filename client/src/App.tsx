@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sun, Moon } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
+import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import Dashboard from "@/pages/dashboard";
 import Messages from "@/pages/messages";
 import Vault from "@/pages/vault";
@@ -119,6 +120,7 @@ function AppLayout() {
           <PerplexityAttribution />
         </div>
       </div>
+      <PWAInstallPrompt />
     </SidebarProvider>
   );
 }

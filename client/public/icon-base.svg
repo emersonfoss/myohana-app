@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#C8943E"/>
+  <!-- Ohana connected dots logo -->
+  <g transform="translate(256, 220)">
+    <!-- Center dot -->
+    <circle cx="0" cy="0" r="24" fill="#FFF8F0"/>
+    <!-- Top dot -->
+    <circle cx="0" cy="-80" r="18" fill="#FFF8F0"/>
+    <!-- Bottom-left dot -->
+    <circle cx="-69" cy="40" r="18" fill="#FFF8F0"/>
+    <!-- Bottom-right dot -->
+    <circle cx="69" cy="40" r="18" fill="#FFF8F0"/>
+    <!-- Top-left dot -->
+    <circle cx="-52" cy="-52" r="14" fill="#FFF8F0" opacity="0.8"/>
+    <!-- Top-right dot -->
+    <circle cx="52" cy="-52" r="14" fill="#FFF8F0" opacity="0.8"/>
+    <!-- Connecting lines -->
+    <line x1="0" y1="0" x2="0" y2="-80" stroke="#FFF8F0" stroke-width="4" opacity="0.5"/>
+    <line x1="0" y1="0" x2="-69" y2="40" stroke="#FFF8F0" stroke-width="4" opacity="0.5"/>
+    <line x1="0" y1="0" x2="69" y2="40" stroke="#FFF8F0" stroke-width="4" opacity="0.5"/>
+    <line x1="0" y1="0" x2="-52" y2="-52" stroke="#FFF8F0" stroke-width="3" opacity="0.4"/>
+    <line x1="0" y1="0" x2="52" y2="-52" stroke="#FFF8F0" stroke-width="3" opacity="0.4"/>
+    <line x1="-69" y1="40" x2="69" y2="40" stroke="#FFF8F0" stroke-width="3" opacity="0.35"/>
+    <line x1="-52" y1="-52" x2="0" y2="-80" stroke="#FFF8F0" stroke-width="3" opacity="0.35"/>
+    <line x1="52" y1="-52" x2="0" y2="-80" stroke="#FFF8F0" stroke-width="3" opacity="0.35"/>
+  </g>
+  <!-- MyOhana text -->
+  <text x="256" y="370" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="56" fill="#FFF8F0" letter-spacing="2">MyOhana</text>
+</svg>

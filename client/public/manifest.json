@@ -1,0 +1,26 @@
+{
+  "name": "MyOhana — Family Hub",
+  "short_name": "MyOhana",
+  "description": "A private family hub. Nobody gets left behind or forgotten.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5EFDF",
+  "theme_color": "#C8943E",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["lifestyle", "social"],
+  "lang": "en-US"
+}
