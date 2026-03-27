@@ -183,8 +183,10 @@ export interface IStorage {
 
   // Subscriptions
   getSubscription(familyId: number): Promise<Subscription | undefined>;
+  getSubscriptionByStripeCustomerId(stripeCustomerId: string): Promise<Subscription | undefined>;
   createSubscription(sub: InsertSubscription): Promise<Subscription>;
   updateSubscriptionStatus(id: number, status: string): Promise<Subscription | undefined>;
+  updateSubscription(id: number, fields: Partial<InsertSubscription & { status: string }>): Promise<Subscription | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -504,6 +506,15 @@ export class DatabaseStorage implements IStorage {
 
   async updateSubscriptionStatus(id: number, status: string): Promise<Subscription | undefined> {
     db.update(subscriptions).set({ status }).where(eq(subscriptions.id, id)).run();
+    return db.select().from(subscriptions).where(eq(subscriptions.id, id)).get();
+  }
+
+  async getSubscriptionByStripeCustomerId(stripeCustomerId: string): Promise<Subscription | undefined> {
+    return db.select().from(subscriptions).where(eq(subscriptions.stripeCustomerId, stripeCustomerId)).get();
+  }
+
+  async updateSubscription(id: number, fields: Partial<InsertSubscription & { status: string }>): Promise<Subscription | undefined> {
+    db.update(subscriptions).set(fields).where(eq(subscriptions.id, id)).run();
     return db.select().from(subscriptions).where(eq(subscriptions.id, id)).get();
   }
 }
