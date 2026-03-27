@@ -239,6 +239,41 @@ button:active:not(:disabled) {
   }
 }
 
+/* Mobile responsiveness improvements */
+@media (max-width: 640px) {
+  /* Dashboard stat cards: 2-col on mobile (already set), ensure good sizing */
+  .grid-cols-2 > [data-testid^="stat-"] {
+    min-height: 5rem;
+  }
+
+  /* Message cards full-width */
+  [data-testid="messages-page"] .space-y-3 > * {
+    width: 100%;
+  }
+
+  /* Calendar cells larger tap targets on mobile */
+  [data-testid="calendar-page"] .grid-cols-7 > div {
+    min-height: 52px;
+    cursor: pointer;
+  }
+
+  /* Forms inside dialogs — ensure inputs are at least 44px for touch */
+  [data-slot="dialog-content"] input,
+  [data-slot="dialog-content"] textarea,
+  [data-slot="dialog-content"] button {
+    min-height: 44px;
+  }
+}
+
+/* Safe area padding for fixed/sticky bottom elements in PWA */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  @media (display-mode: standalone) {
+    [data-testid="chat-page"] > :last-child {
+      padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    }
+  }
+}
+
 /**
  * Using the elevate system.
  * Automatic contrast adjustment.

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,9 +7,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MessageCircle, Image, Calendar, Shield, Heart, Send, Plus } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
+import { OnboardingWizard, useOnboarding } from "@/components/onboarding-wizard";
 import type { Family, FamilyMember, Message } from "@shared/schema";
 
 export default function Dashboard() {
+  const { isOnboarded, markOnboarded } = useOnboarding();
+  const [showWizard, setShowWizard] = useState(!isOnboarded);
+
   const { data: familyData, isLoading: familyLoading } = useQuery<{ family: Family; members: FamilyMember[] }>({
     queryKey: ["/api/family"],
   });
@@ -50,6 +55,15 @@ export default function Dashboard() {
   ];
 
   return (
+    <>
+    {showWizard && (
+      <OnboardingWizard
+        onComplete={() => {
+          markOnboarded();
+          setShowWizard(false);
+        }}
+      />
+    )}
     <div className="p-4 sm:p-6 space-y-8 max-w-5xl mx-auto page-enter" data-testid="dashboard-page">
       {/* Welcome header */}
       <div>
@@ -60,7 +74,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((stat) => (
           <Card key={stat.label} className="card-hover" data-testid={`stat-${stat.label.toLowerCase().replace(/\s/g, "-")}`}>
             <CardContent className="pt-5 pb-4 px-4">
@@ -101,7 +115,7 @@ export default function Dashboard() {
       </div>
 
       {/* Quick actions */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
         <Link href="/messages">
           <Button data-testid="button-send-message">
             <Send className="h-4 w-4 mr-2" />
@@ -174,5 +188,6 @@ export default function Dashboard() {
         )}
       </div>
     </div>
+    </>
   );
 }

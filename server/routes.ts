@@ -546,6 +546,27 @@ export async function registerRoutes(
     });
   });
 
+  // ─── Health Check ───────────────────────────────────────────────
+  app.get("/api/health", async (_req, res) => {
+    try {
+      // Verify database connectivity with a simple query
+      await storage.getFamily();
+      res.json({
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        version: "1.0.0",
+        database: "connected",
+      });
+    } catch (error) {
+      res.status(503).json({
+        status: "error",
+        timestamp: new Date().toISOString(),
+        version: "1.0.0",
+        database: "disconnected",
+      });
+    }
+  });
+
   // Serve uploaded files — behind auth middleware
   app.use("/uploads", requireAuth, express.static(uploadsDir));
 
@@ -560,6 +581,24 @@ export async function registerRoutes(
       res.json({ family, members });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch family" });
+    }
+  });
+
+  // Add family member
+  app.post("/api/family/members", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+      const { familyId, name, role, emoji } = req.body;
+      if (!name) return res.status(400).json({ message: "Name is required" });
+      const member = await storage.createFamilyMember({
+        familyId: familyId || req.user!.familyId,
+        name,
+        role: role || "child",
+        emoji: emoji || "👤",
+      });
+      res.status(201).json(member);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to add family member" });
     }
   });
 
@@ -619,7 +658,9 @@ export async function registerRoutes(
   // Delete vault document
   app.delete("/api/vault/:id", async (req, res) => {
     try {
-      const doc = await storage.getVaultDocument(Number(req.params.id));
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const doc = await storage.getVaultDocument(id);
       if (!doc) return res.status(404).json({ message: "Document not found" });
       if (doc.familyId !== req.user!.familyId) {
         return res.status(403).json({ message: "Forbidden" });
@@ -686,7 +727,9 @@ export async function registerRoutes(
   // Delete media item
   app.delete("/api/media/:id", async (req, res) => {
     try {
-      const item = await storage.getMediaItem(Number(req.params.id));
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const item = await storage.getMediaItem(id);
       if (!item) return res.status(404).json({ message: "Media item not found" });
       if (item.familyId !== req.user!.familyId) {
         return res.status(403).json({ message: "Forbidden" });

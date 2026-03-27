@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, ChevronLeft, ChevronRight, MapPin, Calendar as CalendarIcon, RefreshCw } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, MapPin, Calendar as CalendarIcon } from "lucide-react";
 import {
   format,
   startOfMonth,
@@ -103,19 +103,6 @@ export default function CalendarPage() {
       return isSameDay(eDate, date);
     });
   };
-
-  const syncCalendar = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/calendar/sync");
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Coming Soon",
-        description: "Google Calendar sync is not yet configured. Stay tuned!",
-      });
-    },
-  });
 
   const sourceBadge = (source: string) => {
     switch (source) {
@@ -282,28 +269,6 @@ export default function CalendarPage() {
               );
             })}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Google Calendar Sync */}
-      <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800" data-testid="google-calendar-card">
-        <CardContent className="py-4 px-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">Connect Google Calendar</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Sync your family's Google Calendar events automatically.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => syncCalendar.mutate()}
-            disabled={syncCalendar.isPending}
-            data-testid="button-sync-google"
-          >
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Connect
-          </Button>
         </CardContent>
       </Card>
 
