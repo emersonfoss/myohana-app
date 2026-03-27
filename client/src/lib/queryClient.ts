@@ -9,14 +9,55 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function getCsrfTokenFromCookie(): string | null {
+  const match = document.cookie
+    .split("; ")
+    .find(
+      (row) =>
+        row.startsWith("x-csrf-token=") ||
+        row.startsWith("__Host-psifi.x-csrf-token=")
+    );
+  return match ? match.split("=").slice(1).join("=") : null;
+}
+
+let csrfToken: string | null = null;
+
+async function ensureCsrfToken(): Promise<string | null> {
+  if (csrfToken) return csrfToken;
+  try {
+    const res = await fetch(`${API_BASE}/api/csrf-token`, {
+      credentials: "include",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      csrfToken = data.csrfToken;
+      return csrfToken;
+    }
+  } catch {
+    // CSRF token fetch failed; continue without it
+  }
+  return getCsrfTokenFromCookie();
+}
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (data) {
+    headers["Content-Type"] = "application/json";
+  }
+  // Include CSRF token on state-changing requests
+  if (["POST", "PUT", "DELETE", "PATCH"].includes(method.toUpperCase())) {
+    const token = await ensureCsrfToken();
+    if (token) {
+      headers["x-csrf-token"] = token;
+    }
+  }
   const res = await fetch(`${API_BASE}${url}`, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -43,13 +84,16 @@ export const getQueryFn: <T>(options: {
     return await res.json();
   };
 
+// Keys that should remain stale forever (static or auth-managed)
+const infiniteStaleKeys = ["/api/auth/me", "/api/graph/schema"];
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
+      staleTime: 30_000,
       retry: false,
     },
     mutations: {
@@ -57,3 +101,15 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+// Override staleTime for specific query keys
+const originalDefaultOptions = queryClient.getDefaultOptions();
+queryClient.setDefaultOptions({
+  ...originalDefaultOptions,
+  queries: {
+    ...originalDefaultOptions.queries,
+    staleTime: 30_000,
+  },
+});
+
+export { infiniteStaleKeys };

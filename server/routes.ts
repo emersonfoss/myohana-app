@@ -8,7 +8,11 @@ import crypto from "crypto";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import Database from "better-sqlite3";
+import createSqliteStore from "better-sqlite3-session-store";
+import cookieParser from "cookie-parser";
+import { doubleCsrf } from "csrf-csrf";
+import rateLimit from "express-rate-limit";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { seedDatabase } from "./seed";
@@ -25,7 +29,8 @@ import {
   type User,
 } from "@shared/schema";
 
-const MemoryStore = createMemoryStore(session);
+const SqliteStore = createSqliteStore(session);
+const sessionsDb = new Database("sessions.db");
 
 function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
   const s = salt || crypto.randomBytes(16).toString("hex");
@@ -83,6 +88,64 @@ const upload = multer({
   },
 });
 
+// ─── Session Secret ────────────────────────────────────────────────
+function getSessionSecret(): string {
+  if (process.env.SESSION_SECRET) {
+    return process.env.SESSION_SECRET;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SESSION_SECRET environment variable is required in production"
+    );
+  }
+  // Development: generate a random secret
+  return crypto.randomBytes(32).toString("hex");
+}
+
+const sessionSecret = getSessionSecret();
+
+// ─── Rate Limiters ─────────────────────────────────────────────────
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: { message: "Too many login attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  message: { message: "Too many registration attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ─── CSRF Protection ───────────────────────────────────────────────
+const csrfExcludedPaths = [
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/join",
+  "/api/chat/webhook",
+  "/api/billing/webhook",
+];
+
+const {
+  generateCsrfToken,
+  doubleCsrfProtection,
+} = doubleCsrf({
+  getSecret: () => sessionSecret,
+  getSessionIdentifier: (req) => (req as any).session?.id ?? "",
+  cookieName: process.env.NODE_ENV === "production" ? "__Host-psifi.x-csrf-token" : "x-csrf-token",
+  cookieOptions: {
+    sameSite: "lax",
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true,
+  },
+  getCsrfTokenFromRequest: (req) => req.headers["x-csrf-token"] as string,
+});
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -91,18 +154,28 @@ export async function registerRoutes(
   await seedDatabase();
 
   // ─── Session + Passport Setup ──────────────────────────────────────
-  app.use(
-    session({
-      secret: process.env.SESSION_SECRET || "myohana-family-secret-key-2024",
-      resave: false,
-      saveUninitialized: false,
-      store: new MemoryStore({ checkPeriod: 86400000 }),
-      cookie: { maxAge: 24 * 60 * 60 * 1000 },
-    })
-  );
+  const sessionMiddleware = session({
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    store: new SqliteStore({
+      client: sessionsDb,
+      expired: {
+        clear: true,
+        intervalMs: 900000, // 15 minutes
+      },
+    }),
+    cookie: {
+      maxAge: 24 * 60 * 60 * 1000,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    },
+  });
 
+  app.use(sessionMiddleware);
   app.use(passport.initialize());
   app.use(passport.session());
+  app.use(cookieParser());
 
   passport.use(
     new LocalStrategy(
@@ -148,8 +221,14 @@ export async function registerRoutes(
     }
   });
 
+  // ─── CSRF Token Endpoint ─────────────────────────────────────────
+  app.get("/api/csrf-token", (req: Request, res: Response) => {
+    const token = generateCsrfToken(req, res);
+    res.json({ csrfToken: token });
+  });
+
   // ─── Auth Routes ───────────────────────────────────────────────────
-  app.post("/api/auth/register", async (req: Request, res: Response) => {
+  app.post("/api/auth/register", registerLimiter, async (req: Request, res: Response) => {
     try {
       const { familyName, email, password, name } = req.body;
       if (!familyName || !email || !password || !name) {
@@ -192,7 +271,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/login", (req: Request, res: Response, next: NextFunction) => {
+  app.post("/api/auth/login", loginLimiter, (req: Request, res: Response, next: NextFunction) => {
     passport.authenticate("local", (err: any, user: Express.User | false, info: any) => {
       if (err) return next(err);
       if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
@@ -275,31 +354,87 @@ export async function registerRoutes(
     return res.status(401).json({ message: "Not authenticated" });
   }
 
-  // Apply requireAuth to all /api routes EXCEPT /api/auth/*
+  // Apply requireAuth to all /api routes EXCEPT /api/auth/* and /api/csrf-token
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/auth/") || req.path.startsWith("/auth")) return next();
+    if (req.path === "/csrf-token") return next();
     return requireAuth(req, res, next);
   });
 
-  // ─── WebSocket Setup ───────────────────────────────────────────
-  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+  // Apply CSRF protection to state-changing routes, excluding specific paths
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+    // Skip GET, HEAD, OPTIONS
+    if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+    // Skip excluded paths
+    const fullPath = `/api${req.path}`;
+    if (csrfExcludedPaths.some((p) => fullPath === p)) return next();
+    return doubleCsrfProtection(req, res, next);
+  });
 
-  function broadcast(data: Record<string, unknown>) {
+  // ─── WebSocket Setup ───────────────────────────────────────────
+  interface AuthenticatedWebSocket extends WebSocket {
+    userId?: number;
+    familyId?: number;
+  }
+
+  const wss = new WebSocketServer({ noServer: true });
+
+  function broadcast(data: Record<string, unknown>, familyId?: number) {
     const payload = JSON.stringify(data);
     wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
+      const authClient = client as AuthenticatedWebSocket;
+      if (authClient.readyState === WebSocket.OPEN) {
+        if (familyId === undefined || authClient.familyId === familyId) {
+          authClient.send(payload);
+        }
       }
     });
   }
 
-  wss.on("connection", (ws) => {
+  // WebSocket authentication via session parsing
+  httpServer.on("upgrade", (req, socket, head) => {
+    if (req.url !== "/ws") {
+      socket.destroy();
+      return;
+    }
+
+    sessionMiddleware(req as any, {} as any, () => {
+      const sess = (req as any).session;
+      const passportUser = sess?.passport?.user;
+      if (!passportUser) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        const authWs = ws as AuthenticatedWebSocket;
+        // Look up the full user to get familyId
+        storage.getUserById(passportUser).then((user) => {
+          if (user) {
+            authWs.userId = user.id;
+            authWs.familyId = user.familyId;
+          }
+          wss.emit("connection", ws, req);
+        }).catch(() => {
+          wss.emit("connection", ws, req);
+        });
+      });
+    });
+  });
+
+  wss.on("connection", (ws: AuthenticatedWebSocket) => {
     ws.on("message", (data) => {
       try {
         const message = JSON.parse(data.toString());
         wss.clients.forEach((client) => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(message));
+          const authClient = client as AuthenticatedWebSocket;
+          if (
+            authClient !== ws &&
+            authClient.readyState === WebSocket.OPEN &&
+            authClient.familyId === ws.familyId
+          ) {
+            authClient.send(JSON.stringify(message));
           }
         });
       } catch {
@@ -308,8 +443,8 @@ export async function registerRoutes(
     });
   });
 
-  // Serve uploaded files
-  app.use("/uploads", express.static(uploadsDir));
+  // Serve uploaded files — behind auth middleware
+  app.use("/uploads", requireAuth, express.static(uploadsDir));
 
   // Get family + all members
   app.get("/api/family", async (_req, res) => {
@@ -478,10 +613,8 @@ export async function registerRoutes(
           senderName: sender?.name.split(" ")[0] || "Someone",
           recipientName: recipient?.name.split(" ")[0] || "Someone",
           senderEmoji: sender?.emoji || "💛",
-        });
-      }
-      // Auto-ingest into memory
-      if (family) {
+        }, family.id);
+        // Auto-ingest into memory
         memoryEngine.ingestPulse(pulse, members).catch(() => {});
       }
       res.status(201).json(pulse);
@@ -1451,7 +1584,7 @@ export async function registerRoutes(
       const parsed = insertChatMessageSchema.parse(req.body);
       const msg = await storage.createChatMessage(parsed);
       // Broadcast via WebSocket
-      broadcast({ type: "chat", senderName: msg.senderName, content: msg.content });
+      broadcast({ type: "chat", senderName: msg.senderName, content: msg.content }, msg.familyId);
       res.status(201).json(msg);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Invalid chat message" });
@@ -1472,7 +1605,7 @@ export async function registerRoutes(
         externalId: externalId || null,
         importedAt: new Date().toISOString(),
       });
-      broadcast({ type: "chat", senderName: msg.senderName, content: msg.content });
+      broadcast({ type: "chat", senderName: msg.senderName, content: msg.content }, msg.familyId);
       res.status(201).json(msg);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Webhook processing failed" });
