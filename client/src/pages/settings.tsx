@@ -16,9 +16,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CreditCard, Users, Mail, Copy, Check, AlertTriangle } from "lucide-react";
+import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
 import type { Family, FamilyMember } from "@shared/schema";
 
 interface Subscription {
@@ -34,8 +35,14 @@ interface Subscription {
   createdAt: string;
 }
 
+interface AppConfig {
+  stripePublishableKey: string | null;
+  billingEnabled: boolean;
+}
+
 export default function Settings() {
   const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
 
   const { data: user } = useQuery<{ id: number; name: string; email: string; familyId: number; role: string } | null>({
     queryKey: ["/api/auth/me"],
@@ -52,6 +59,10 @@ export default function Settings() {
     queryKey: ["/api/family"],
   });
 
+  const { data: appConfig } = useQuery<AppConfig>({
+    queryKey: ["/api/config"],
+  });
+
   const inviteMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/auth/invite");
@@ -60,9 +71,15 @@ export default function Settings() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/billing/cancel"),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/billing/cancel");
+      return res.json();
+    },
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/billing"] });
+      if (data?.message) {
+        toast({ title: "Subscription", description: data.message });
+      }
     },
   });
 
@@ -71,10 +88,50 @@ export default function Settings() {
       const res = await apiRequest("POST", "/api/billing/subscribe", { plan });
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/billing"] });
+    onSuccess: (data) => {
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/billing"] });
+      }
+    },
+    onError: (error: Error) => {
+      if (error.message.includes("Billing not configured")) {
+        toast({ title: "Billing Coming Soon", description: "Stripe billing is not yet configured.", variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
+
+  const portalMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/billing/portal");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Handle billing=success / billing=cancelled query params on return from Stripe
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes("billing=success")) {
+      toast({ title: "Welcome to MyOhana!", description: "Your subscription is now active." });
+      queryClient.invalidateQueries({ queryKey: ["/api/billing"] });
+      // Clean up the URL
+      window.history.replaceState(null, "", "/#/settings");
+    } else if (hash.includes("billing=cancelled")) {
+      toast({ title: "Checkout cancelled", description: "You can subscribe any time from Settings." });
+      window.history.replaceState(null, "", "/#/settings");
+    }
+  }, [toast]);
 
   const copyInviteCode = (code: string) => {
     navigator.clipboard?.writeText(code);
@@ -95,6 +152,7 @@ export default function Settings() {
   const sub = billingData?.subscription;
   const family = familyData?.family;
   const members = familyData?.members || [];
+  const billingEnabled = appConfig?.billingEnabled ?? false;
 
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
   const planLabel = sub?.plan === "extended" ? "Extended" : "Family";
@@ -143,7 +201,19 @@ export default function Settings() {
                   {family.name} — Subscriber #{sub.id}
                 </Badge>
               )}
-              <div className="pt-2">
+              <div className="pt-2 flex flex-wrap gap-2">
+                {billingEnabled && sub.stripeCustomerId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => portalMutation.mutate()}
+                    disabled={portalMutation.isPending}
+                    data-testid="button-manage-billing"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    {portalMutation.isPending ? "Loading..." : "Manage Billing"}
+                  </Button>
+                )}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
@@ -180,15 +250,35 @@ export default function Settings() {
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                {sub?.status === "cancelled" ? "Your subscription has been cancelled." : "No active subscription."}
+                {sub?.status === "cancelled"
+                  ? "Your subscription has been cancelled."
+                  : sub?.status === "past_due"
+                    ? "Your payment is past due. Please update your payment method."
+                    : "No active subscription."}
               </p>
-              <Button
-                onClick={() => subscribeMutation.mutate("family")}
-                disabled={subscribeMutation.isPending}
-                data-testid="button-subscribe"
-              >
-                {subscribeMutation.isPending ? "Activating..." : "Subscribe — $19.99/mo"}
-              </Button>
+              {!billingEnabled ? (
+                <p className="text-sm text-muted-foreground italic">
+                  Billing coming soon — Stripe is not yet configured.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => subscribeMutation.mutate("family")}
+                    disabled={subscribeMutation.isPending}
+                    data-testid="button-subscribe"
+                  >
+                    {subscribeMutation.isPending ? "Redirecting..." : "Subscribe — $19.99/mo"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => subscribeMutation.mutate("extended")}
+                    disabled={subscribeMutation.isPending}
+                    data-testid="button-subscribe-extended"
+                  >
+                    {subscribeMutation.isPending ? "Redirecting..." : "Extended — $29.99/mo"}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

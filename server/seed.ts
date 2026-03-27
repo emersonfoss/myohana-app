@@ -238,7 +238,7 @@ export async function seedDatabase() {
     updatedAt: fiveMinAgo,
   }).run();
 
-  // Seed subscription for the Foss family
+  // Seed subscription for the Foss family (dev fixture only)
   const subStart = new Date();
   const nextMonth = new Date(subStart);
   nextMonth.setMonth(nextMonth.getMonth() + 1);
@@ -249,8 +249,8 @@ export async function seedDatabase() {
     priceMonthly: 1999,
     startedAt: subStart.toISOString(),
     expiresAt: nextMonth.toISOString(),
-    stripeCustomerId: "mock_cus_1",
-    stripeSubscriptionId: "mock_sub_1",
+    stripeCustomerId: process.env.NODE_ENV === "production" ? null : "dev_fixture_cus",
+    stripeSubscriptionId: process.env.NODE_ENV === "production" ? null : "dev_fixture_sub",
   }).run();
 
   // Seed chat messages
