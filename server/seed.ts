@@ -5,6 +5,11 @@ import {
 import { memoryEngine } from "./memory-engine";
 
 export async function seedDatabase() {
+  if (process.env.NODE_ENV === "production") {
+    console.log("Skipping seed in production");
+    return;
+  }
+
   // Check if the family already exists
   const existingFamily = db.select().from(families).get();
   if (existingFamily) {
