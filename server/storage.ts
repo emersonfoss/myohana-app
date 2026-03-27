@@ -17,7 +17,7 @@ import {
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, like, gte, lte, sql } from "drizzle-orm";
 
 const sqlite = new Database("data.db");
 sqlite.pragma("journal_mode = WAL");
@@ -94,6 +94,17 @@ sqlite.exec(`
     stripe_subscription_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Performance indexes for family-scoped queries
+  CREATE INDEX IF NOT EXISTS idx_messages_family_created ON messages(family_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_photos_family_created ON photos(family_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_memory_atoms_family_occurred ON memory_atoms(family_id, occurred_at);
+  CREATE INDEX IF NOT EXISTS idx_calendar_events_family_start ON calendar_events(family_id, start_date);
+  CREATE INDEX IF NOT EXISTS idx_vault_documents_family ON vault_documents(family_id);
+  CREATE INDEX IF NOT EXISTS idx_chat_messages_family_created ON chat_messages(family_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_media_items_family ON media_items(family_id);
+  CREATE INDEX IF NOT EXISTS idx_thinking_of_you_family_created ON thinking_of_you(family_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_locations_family_member ON locations(family_id, member_id);
 `);
 
 export interface IStorage {
@@ -112,6 +123,7 @@ export interface IStorage {
   // Vault
   getVaultDocuments(familyId: number): Promise<VaultDocument[]>;
   createVaultDocument(doc: InsertVaultDocument): Promise<VaultDocument>;
+  getVaultDocument(id: number): Promise<VaultDocument | undefined>;
   deleteVaultDocument(id: number): Promise<void>;
 
   // Calendar
@@ -121,6 +133,7 @@ export interface IStorage {
   // Media
   getMediaItems(familyId: number): Promise<MediaItem[]>;
   createMediaItem(item: InsertMediaItem): Promise<MediaItem>;
+  getMediaItem(id: number): Promise<MediaItem | undefined>;
   deleteMediaItem(id: number): Promise<void>;
 
   // Thinking of You
@@ -246,6 +259,10 @@ export class DatabaseStorage implements IStorage {
     return db.insert(vaultDocuments).values(doc).returning().get();
   }
 
+  async getVaultDocument(id: number): Promise<VaultDocument | undefined> {
+    return db.select().from(vaultDocuments).where(eq(vaultDocuments.id, id)).get();
+  }
+
   async deleteVaultDocument(id: number): Promise<void> {
     db.delete(vaultDocuments).where(eq(vaultDocuments.id, id)).run();
   }
@@ -272,6 +289,10 @@ export class DatabaseStorage implements IStorage {
 
   async createMediaItem(item: InsertMediaItem): Promise<MediaItem> {
     return db.insert(mediaItems).values(item).returning().get();
+  }
+
+  async getMediaItem(id: number): Promise<MediaItem | undefined> {
+    return db.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
   }
 
   async deleteMediaItem(id: number): Promise<void> {
@@ -389,36 +410,33 @@ export class DatabaseStorage implements IStorage {
     memberId?: number; memberIds?: number[];
     category?: string; sourceType?: string;
   }): Promise<MemoryAtom[]> {
-    let results = db.select().from(memoryAtoms)
-      .where(eq(memoryAtoms.familyId, familyId))
-      .orderBy(desc(memoryAtoms.occurredAt))
-      .all();
+    const conditions = [eq(memoryAtoms.familyId, familyId)];
 
-    if (options?.memberId) {
-      const mid = options.memberId;
-      results = results.filter(a => {
-        if (!a.memberIds) return false;
-        const ids: number[] = JSON.parse(a.memberIds);
-        return ids.includes(mid);
-      });
-    }
-    if (options?.memberIds && options.memberIds.length > 0) {
-      const mids = options.memberIds;
-      results = results.filter(a => {
-        if (!a.memberIds) return false;
-        const ids: number[] = JSON.parse(a.memberIds);
-        return mids.every(mid => ids.includes(mid));
-      });
-    }
     if (options?.category) {
-      results = results.filter(a => a.category === options.category);
+      conditions.push(eq(memoryAtoms.category, options.category));
     }
     if (options?.sourceType) {
-      results = results.filter(a => a.sourceType === options.sourceType);
+      conditions.push(eq(memoryAtoms.sourceType, options.sourceType));
     }
-    const offset = options?.offset || 0;
+    if (options?.memberId) {
+      // memberIds is stored as a JSON array string; use LIKE for SQLite
+      conditions.push(like(memoryAtoms.memberIds, `%${options.memberId}%`));
+    }
+    if (options?.memberIds && options.memberIds.length > 0) {
+      for (const mid of options.memberIds) {
+        conditions.push(like(memoryAtoms.memberIds, `%${mid}%`));
+      }
+    }
+
     const limit = options?.limit || 20;
-    return results.slice(offset, offset + limit);
+    const offset = options?.offset || 0;
+
+    return db.select().from(memoryAtoms)
+      .where(and(...conditions))
+      .orderBy(desc(memoryAtoms.occurredAt))
+      .limit(limit)
+      .offset(offset)
+      .all();
   }
 
   async getMemoryAtom(id: number): Promise<MemoryAtom | undefined> {
@@ -444,17 +462,23 @@ export class DatabaseStorage implements IStorage {
 
   async getMemoryAtomsByDateRange(familyId: number, start: string, end: string): Promise<MemoryAtom[]> {
     return db.select().from(memoryAtoms)
-      .where(eq(memoryAtoms.familyId, familyId))
+      .where(and(
+        eq(memoryAtoms.familyId, familyId),
+        gte(memoryAtoms.occurredAt, start),
+        lte(memoryAtoms.occurredAt, end),
+      ))
       .orderBy(desc(memoryAtoms.occurredAt))
-      .all()
-      .filter(a => a.occurredAt >= start && a.occurredAt <= end);
+      .all();
   }
 
   async getMemoryAtomsBySourceType(familyId: number, sourceType: string, sourceId: number): Promise<MemoryAtom[]> {
     return db.select().from(memoryAtoms)
-      .where(eq(memoryAtoms.familyId, familyId))
-      .all()
-      .filter(a => a.sourceType === sourceType && a.sourceId === sourceId);
+      .where(and(
+        eq(memoryAtoms.familyId, familyId),
+        eq(memoryAtoms.sourceType, sourceType),
+        eq(memoryAtoms.sourceId, sourceId),
+      ))
+      .all();
   }
 
   async getMemoryStats(familyId: number): Promise<{

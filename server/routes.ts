@@ -18,6 +18,7 @@ import { storage } from "./storage";
 import { seedDatabase } from "./seed";
 import { memoryEngine } from "./memory-engine";
 import { stripe, isStripeConfigured, STRIPE_PRICES, STRIPE_WEBHOOK_SECRET } from "./stripe";
+import { sanitizeInputMiddleware } from "./sanitize";
 import {
   insertMessageSchema,
   insertVaultDocumentSchema,
@@ -408,6 +409,9 @@ export async function registerRoutes(
     }).catch(() => next());
   });
 
+  // ─── Input Sanitization ─────────────────────────────────────────
+  app.use("/api", sanitizeInputMiddleware);
+
   // ─── WebSocket Setup ───────────────────────────────────────────
   interface AuthenticatedWebSocket extends WebSocket {
     userId?: number;
@@ -484,9 +488,9 @@ export async function registerRoutes(
   app.use("/uploads", requireAuth, express.static(uploadsDir));
 
   // Get family + all members
-  app.get("/api/family", async (_req, res) => {
+  app.get("/api/family", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) {
         return res.status(404).json({ message: "No family found" });
       }
@@ -500,7 +504,7 @@ export async function registerRoutes(
   // Get all messages
   app.get("/api/messages", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const recipientId = req.query.recipientId ? Number(req.query.recipientId) : undefined;
       const msgs = await storage.getMessages(family.id, recipientId);
@@ -513,10 +517,10 @@ export async function registerRoutes(
   // Create message
   app.post("/api/messages", async (req, res) => {
     try {
-      const parsed = insertMessageSchema.parse(req.body);
+      const parsed = insertMessageSchema.parse({ ...req.body, familyId: req.user!.familyId });
       const message = await storage.createMessage(parsed);
       // Auto-ingest into memory
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (family) {
         const members = await storage.getFamilyMembers(family.id);
         memoryEngine.ingestMessage(message, members).catch(() => {});
@@ -528,9 +532,9 @@ export async function registerRoutes(
   });
 
   // Get vault documents
-  app.get("/api/vault", async (_req, res) => {
+  app.get("/api/vault", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const docs = await storage.getVaultDocuments(family.id);
       res.json(docs);
@@ -542,7 +546,7 @@ export async function registerRoutes(
   // Add vault document
   app.post("/api/vault", async (req, res) => {
     try {
-      const parsed = insertVaultDocumentSchema.parse(req.body);
+      const parsed = insertVaultDocumentSchema.parse({ ...req.body, familyId: req.user!.familyId });
       const doc = await storage.createVaultDocument(parsed);
       res.status(201).json(doc);
     } catch (error: any) {
@@ -553,7 +557,12 @@ export async function registerRoutes(
   // Delete vault document
   app.delete("/api/vault/:id", async (req, res) => {
     try {
-      await storage.deleteVaultDocument(Number(req.params.id));
+      const doc = await storage.getVaultDocument(Number(req.params.id));
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      if (doc.familyId !== req.user!.familyId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteVaultDocument(doc.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete document" });
@@ -561,9 +570,9 @@ export async function registerRoutes(
   });
 
   // Get calendar events
-  app.get("/api/calendar", async (_req, res) => {
+  app.get("/api/calendar", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const events = await storage.getCalendarEvents(family.id);
       res.json(events);
@@ -575,10 +584,10 @@ export async function registerRoutes(
   // Create calendar event
   app.post("/api/calendar", async (req, res) => {
     try {
-      const parsed = insertCalendarEventSchema.parse(req.body);
+      const parsed = insertCalendarEventSchema.parse({ ...req.body, familyId: req.user!.familyId });
       const event = await storage.createCalendarEvent(parsed);
       // Auto-ingest into memory
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (family) {
         const members = await storage.getFamilyMembers(family.id);
         memoryEngine.ingestEvent(event, members).catch(() => {});
@@ -590,9 +599,9 @@ export async function registerRoutes(
   });
 
   // Get media items
-  app.get("/api/media", async (_req, res) => {
+  app.get("/api/media", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const items = await storage.getMediaItems(family.id);
       res.json(items);
@@ -604,7 +613,7 @@ export async function registerRoutes(
   // Add media item
   app.post("/api/media", async (req, res) => {
     try {
-      const parsed = insertMediaItemSchema.parse(req.body);
+      const parsed = insertMediaItemSchema.parse({ ...req.body, familyId: req.user!.familyId });
       const item = await storage.createMediaItem(parsed);
       res.status(201).json(item);
     } catch (error: any) {
@@ -615,7 +624,12 @@ export async function registerRoutes(
   // Delete media item
   app.delete("/api/media/:id", async (req, res) => {
     try {
-      await storage.deleteMediaItem(Number(req.params.id));
+      const item = await storage.getMediaItem(Number(req.params.id));
+      if (!item) return res.status(404).json({ message: "Media item not found" });
+      if (item.familyId !== req.user!.familyId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteMediaItem(item.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete media item" });
@@ -623,9 +637,9 @@ export async function registerRoutes(
   });
 
   // Get thinking of you pulses
-  app.get("/api/thinking-of-you", async (_req, res) => {
+  app.get("/api/thinking-of-you", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const pulses = await storage.getThinkingOfYouPulses(family.id);
       res.json(pulses);
@@ -637,10 +651,10 @@ export async function registerRoutes(
   // Send thinking of you pulse
   app.post("/api/thinking-of-you", async (req, res) => {
     try {
-      const parsed = insertThinkingOfYouSchema.parse(req.body);
+      const parsed = insertThinkingOfYouSchema.parse({ ...req.body, familyId: req.user!.familyId });
       const pulse = await storage.createThinkingOfYouPulse(parsed);
       // Broadcast via WebSocket
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (family) {
         const members = await storage.getFamilyMembers(family.id);
         const sender = members.find((m) => m.id === pulse.senderId);
@@ -661,9 +675,9 @@ export async function registerRoutes(
   });
 
   // Get photos
-  app.get("/api/photos", async (_req, res) => {
+  app.get("/api/photos", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const allPhotos = await storage.getPhotos(family.id);
       res.json(allPhotos);
@@ -675,10 +689,10 @@ export async function registerRoutes(
   // Upload photo metadata
   app.post("/api/photos", async (req, res) => {
     try {
-      const parsed = insertPhotoSchema.parse(req.body);
+      const parsed = insertPhotoSchema.parse({ ...req.body, familyId: req.user!.familyId });
       const photo = await storage.createPhoto(parsed);
       // Auto-ingest into memory
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (family) {
         const members = await storage.getFamilyMembers(family.id);
         memoryEngine.ingestPhoto(photo, members).catch(() => {});
@@ -697,7 +711,7 @@ export async function registerRoutes(
       }
       const fileUrl = `/uploads/${req.file.filename}`;
       const parsed = insertPhotoSchema.parse({
-        familyId: Number(req.body.familyId),
+        familyId: req.user!.familyId,
         uploadedById: Number(req.body.uploadedById),
         url: fileUrl,
         caption: req.body.caption || null,
@@ -705,7 +719,7 @@ export async function registerRoutes(
       });
       const photo = await storage.createPhoto(parsed);
       // Auto-ingest into memory
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (family) {
         const members = await storage.getFamilyMembers(family.id);
         memoryEngine.ingestPhoto(photo, members).catch(() => {});
@@ -717,9 +731,9 @@ export async function registerRoutes(
   });
 
   // Weekly memory compilation
-  app.get("/api/memory/weekly", async (_req, res) => {
+  app.get("/api/memory/weekly", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
 
       const members = await storage.getFamilyMembers(family.id);
@@ -847,7 +861,7 @@ export async function registerRoutes(
   // Timeline — paginated memory atoms
   app.get("/api/memories/timeline", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const page = Number(req.query.page) || 1;
       const limit = Math.min(Number(req.query.limit) || 20, 100);
@@ -868,7 +882,7 @@ export async function registerRoutes(
   // Search memories
   app.get("/api/memories/search", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const q = req.query.q as string;
       if (!q) return res.json([]);
@@ -882,7 +896,7 @@ export async function registerRoutes(
   // On This Day
   app.get("/api/memories/on-this-day", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const date = (req.query.date as string) || new Date().toISOString();
       const atoms = await memoryEngine.getOnThisDay(family.id, date);
@@ -893,9 +907,9 @@ export async function registerRoutes(
   });
 
   // Get all compilations
-  app.get("/api/memories/compilations", async (_req, res) => {
+  app.get("/api/memories/compilations", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const compilations = await storage.getMemoryCompilations(family.id);
       res.json(compilations);
@@ -909,6 +923,9 @@ export async function registerRoutes(
     try {
       const compilation = await storage.getMemoryCompilation(Number(req.params.id));
       if (!compilation) return res.status(404).json({ message: "Compilation not found" });
+      if (compilation.familyId !== req.user!.familyId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       const atomIds: number[] = compilation.atomIds ? JSON.parse(compilation.atomIds) : [];
       const atoms: any[] = [];
       for (const id of atomIds) {
@@ -924,7 +941,7 @@ export async function registerRoutes(
   // Generate a new compilation
   app.post("/api/memories/compilations/generate", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const { type, startDate, endDate, perspectiveMemberId } = req.body;
       if (!type || !startDate || !endDate) {
@@ -961,9 +978,9 @@ export async function registerRoutes(
   });
 
   // Memory statistics
-  app.get("/api/memories/stats", async (_req, res) => {
+  app.get("/api/memories/stats", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const stats = await storage.getMemoryStats(family.id);
       // Also get the earliest memory for "growing since" info
@@ -982,9 +999,9 @@ export async function registerRoutes(
   });
 
   // Ingest all existing content (one-time bootstrap)
-  app.post("/api/memories/ingest-all", async (_req, res) => {
+  app.post("/api/memories/ingest-all", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const count = await memoryEngine.ingestAllExisting(family.id);
       res.json({ ingested: count });
@@ -994,9 +1011,9 @@ export async function registerRoutes(
   });
 
   // Dashboard stats
-  app.get("/api/stats", async (_req, res) => {
+  app.get("/api/stats", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const stats = await storage.getStats(family.id);
       res.json(stats);
@@ -1006,9 +1023,9 @@ export async function registerRoutes(
   });
 
   // Get all family member locations
-  app.get("/api/locations", async (_req, res) => {
+  app.get("/api/locations", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const locs = await storage.getLocations(family.id);
       res.json(locs);
@@ -1020,7 +1037,7 @@ export async function registerRoutes(
   // Update a member's location
   app.post("/api/locations", async (req, res) => {
     try {
-      const parsed = insertLocationSchema.parse(req.body);
+      const parsed = insertLocationSchema.parse({ ...req.body, familyId: req.user!.familyId });
       const location = await storage.updateLocation(parsed);
       res.status(201).json(location);
     } catch (error: any) {
@@ -1031,9 +1048,9 @@ export async function registerRoutes(
   // ─── Family Graph API ─────────────────────────────────────────────
 
   // Full family context for AI platforms
-  app.get("/api/graph/context", async (_req, res) => {
+  app.get("/api/graph/context", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
 
       const members = await storage.getFamilyMembers(family.id);
@@ -1182,8 +1199,11 @@ export async function registerRoutes(
       const memberId = Number(req.params.id);
       const member = await storage.getFamilyMember(memberId);
       if (!member) return res.status(404).json({ message: "Member not found" });
+      if (member.familyId !== req.user!.familyId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
 
       const msgs = await storage.getMessages(family.id);
@@ -1246,7 +1266,7 @@ export async function registerRoutes(
   app.get("/api/graph/query", async (req, res) => {
     try {
       const q = (req.query.q as string || "").toLowerCase();
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
 
       const members = await storage.getFamilyMembers(family.id);
@@ -1818,9 +1838,9 @@ export async function registerRoutes(
   });
 
   // ─── Chat Bridge Routes ────────────────────────────────────────
-  app.get("/api/chat", async (_req, res) => {
+  app.get("/api/chat", async (req, res) => {
     try {
-      const family = await storage.getFamily();
+      const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const msgs = await storage.getChatMessages(family.id, 50);
       res.json(msgs);
@@ -1831,7 +1851,7 @@ export async function registerRoutes(
 
   app.post("/api/chat", async (req, res) => {
     try {
-      const parsed = insertChatMessageSchema.parse(req.body);
+      const parsed = insertChatMessageSchema.parse({ ...req.body, familyId: req.user!.familyId });
       const msg = await storage.createChatMessage(parsed);
       // Broadcast via WebSocket
       broadcast({ type: "chat", senderName: msg.senderName, content: msg.content }, msg.familyId);
