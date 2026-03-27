@@ -14,11 +14,12 @@ import cookieParser from "cookie-parser";
 import { doubleCsrf } from "csrf-csrf";
 import rateLimit from "express-rate-limit";
 import { WebSocketServer, WebSocket } from "ws";
-import { storage } from "./storage";
+import { storage, db } from "./storage";
 import { seedDatabase } from "./seed";
 import { memoryEngine } from "./memory-engine";
 import { stripe, isStripeConfigured, STRIPE_PRICES, STRIPE_WEBHOOK_SECRET } from "./stripe";
 import { sanitizeInputMiddleware } from "./sanitize";
+import { sendEmail } from "./email";
 import {
   insertMessageSchema,
   insertVaultDocumentSchema,
@@ -123,11 +124,21 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  message: { message: "Too many password reset requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ─── CSRF Protection ───────────────────────────────────────────────
 const csrfExcludedPaths = [
   "/api/auth/login",
   "/api/auth/register",
   "/api/auth/join",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
   "/api/chat/webhook",
   "/api/billing/webhook",
 ];
@@ -350,6 +361,55 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Forgot Password ─────────────────────────────────────────────
+  app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ message: "Email is required" });
+
+      const user = await storage.getUserByEmail(email);
+      if (user) {
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+        await storage.createPasswordResetToken({ userId: user.id, token, expiresAt });
+
+        const appUrl = process.env.APP_URL || "http://localhost:5000";
+        const resetLink = `${appUrl}/#/reset-password?token=${token}`;
+        await sendEmail({
+          to: user.email,
+          subject: "MyOhana — Password Reset",
+          html: `<p>Hi ${user.name},</p><p>Click the link below to reset your password. This link expires in 30 minutes.</p><p><a href="${resetLink}">${resetLink}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+        });
+      }
+
+      // Always return success to not reveal whether email exists
+      res.json({ message: "If an account with that email exists, we've sent a reset link." });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Password reset request failed" });
+    }
+  });
+
+  // ─── Reset Password ──────────────────────────────────────────────
+  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+    try {
+      const { token, newPassword } = req.body;
+      if (!token || !newPassword) return res.status(400).json({ message: "Token and new password are required" });
+
+      const resetToken = await storage.getPasswordResetToken(token);
+      if (!resetToken) return res.status(400).json({ message: "Invalid or expired reset token" });
+      if (resetToken.usedAt) return res.status(400).json({ message: "This reset token has already been used" });
+      if (new Date(resetToken.expiresAt) < new Date()) return res.status(400).json({ message: "This reset token has expired" });
+
+      const { hash } = hashPassword(newPassword);
+      await storage.updateUserPassword(resetToken.userId, hash);
+      await storage.markPasswordResetTokenUsed(resetToken.id);
+
+      res.json({ message: "Password has been reset successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Password reset failed" });
+    }
+  });
+
   // ─── Auth Middleware ───────────────────────────────────────────────
   function requireAuth(req: Request, res: Response, next: NextFunction) {
     if (req.isAuthenticated()) return next();
@@ -385,6 +445,8 @@ export async function registerRoutes(
     "/stats",
     "/csrf-token",
     "/graph",
+    "/export",
+    "/account",
   ];
 
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
@@ -1879,6 +1941,124 @@ export async function registerRoutes(
       res.status(201).json(msg);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Webhook processing failed" });
+    }
+  });
+
+  // ─── Change Password ─────────────────────────────────────────────
+  app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current password and new password are required" });
+      }
+
+      const user = await storage.getUserById(req.user!.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      if (!verifyPassword(currentPassword, user.password)) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      const { hash } = hashPassword(newPassword);
+      await storage.updateUserPassword(user.id, hash);
+      res.json({ message: "Password changed successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Password change failed" });
+    }
+  });
+
+  // ─── Data Export ────────────────────────────────────────────────
+  app.get("/api/export", async (req: Request, res: Response) => {
+    try {
+      const user = req.user!;
+      const familyId = user.familyId;
+
+      const [family, members, msgs, vault, calendar, media, pics, pulses, chat, atoms, compilations, locs] = await Promise.all([
+        storage.getFamilyById(familyId),
+        storage.getFamilyMembers(familyId),
+        storage.getMessages(familyId),
+        storage.getVaultDocuments(familyId),
+        storage.getCalendarEvents(familyId),
+        storage.getMediaItems(familyId),
+        storage.getPhotos(familyId),
+        storage.getThinkingOfYouPulses(familyId),
+        storage.getChatMessages(familyId, 10000),
+        storage.getMemoryAtoms(familyId, { limit: 100000 }),
+        storage.getMemoryCompilations(familyId),
+        storage.getLocations(familyId),
+      ]);
+
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        family,
+        members,
+        messages: msgs,
+        vault,
+        calendar,
+        media,
+        photos: pics,
+        pulses,
+        chat,
+        memories: { atoms, compilations },
+        locations: locs,
+      };
+
+      const dateStr = new Date().toISOString().split("T")[0];
+      res.setHeader("Content-Disposition", `attachment; filename="myohana-export-${dateStr}.json"`);
+      res.setHeader("Content-Type", "application/json");
+      res.json(exportData);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Export failed" });
+    }
+  });
+
+  // ─── Delete Account ─────────────────────────────────────────────
+  app.delete("/api/account", async (req: Request, res: Response) => {
+    try {
+      const { confirmEmail } = req.body;
+      const user = req.user!;
+
+      if (!confirmEmail || confirmEmail !== user.email) {
+        return res.status(400).json({ message: "Please confirm with your email address" });
+      }
+
+      const familyId = user.familyId;
+
+      // Check if user is the last admin
+      const familyUsers = await storage.getUsersByFamily(familyId);
+      const admins = familyUsers.filter((u) => u.role === "admin");
+      const isLastAdmin = admins.length === 1 && admins[0].id === user.id;
+
+      // If Stripe configured and family has active subscription, cancel it
+      if (isStripeConfigured() && stripe) {
+        const sub = await storage.getSubscription(familyId);
+        if (sub && sub.stripeSubscriptionId && sub.status === "active") {
+          try {
+            await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
+          } catch {
+            // Stripe cancellation failed, continue with deletion
+          }
+        }
+      }
+
+      if (isLastAdmin) {
+        // Cascade delete all family data
+        await storage.deleteFamilyData(familyId);
+      } else {
+        // Just delete this user
+        await storage.deleteUser(user.id);
+      }
+
+      // Destroy session
+      req.logout((err) => {
+        if (err) return res.status(500).json({ message: "Account deleted but session cleanup failed" });
+        req.session.destroy((err) => {
+          if (err) return res.status(500).json({ message: "Account deleted but session cleanup failed" });
+          res.json({ message: "Account deleted successfully" });
+        });
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Account deletion failed" });
     }
   });
 

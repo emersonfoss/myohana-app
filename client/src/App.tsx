@@ -29,6 +29,8 @@ import GraphPage from "@/pages/graph";
 import Chat from "@/pages/chat";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
@@ -149,6 +151,8 @@ function AuthGate() {
       <Switch>
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
+        <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/reset-password" component={ResetPassword} />
         <Route>
           <Redirect to="/login" />
         </Route>
