@@ -1,7 +1,10 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
+import pinoHttp from "pino-http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { logger } from "./logger";
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,6 +15,20 @@ declare module "http" {
   }
 }
 
+// ─── CORS ──────────────────────────────────────────────────────────
+const corsOrigin =
+  process.env.NODE_ENV === "production"
+    ? process.env.APP_URL || false
+    : true;
+
+app.use(
+  cors({
+    origin: corsOrigin,
+    credentials: true,
+  }),
+);
+
+// ─── Body Parsing ──────────────────────────────────────────────────
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -22,54 +39,41 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+// ─── Request Logging (pino-http) ───────────────────────────────────
+app.use(
+  pinoHttp({
+    logger,
+    autoLogging: {
+      ignore: (req) => (req as any).url === "/api/health",
+    },
+  }),
+);
 
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
+// ─── Unhandled Rejection / Exception Handlers ──────────────────────
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection");
+});
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
-    }
-  });
-
-  next();
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "Uncaught exception — shutting down");
+  process.exit(1);
 });
 
 (async () => {
-  await registerRoutes(httpServer, app);
+  const { wss } = await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  // ─── Global Error Handler ──────────────────────────────────────────
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const message =
+      process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : err.message || "Internal Server Error";
 
-    console.error("Internal Server Error:", err);
+    logger.error({ err, status }, "Request error");
 
     if (res.headersSent) {
-      return next(err);
+      return;
     }
 
     return res.status(status).json({ message });
@@ -97,7 +101,27 @@ app.use((req, res, next) => {
       reusePort: true,
     },
     () => {
-      log(`serving on port ${port}`);
+      logger.info(`MyOhana server listening on port ${port}`);
     },
   );
+
+  // ─── Graceful Shutdown ─────────────────────────────────────────────
+  function shutdown(signal: string) {
+    logger.info(`${signal} received, shutting down gracefully...`);
+    httpServer.close(() => {
+      wss.close(() => {
+        logger.info("WebSocket server closed");
+      });
+      logger.info("HTTP server closed");
+      process.exit(0);
+    });
+    // Force exit after 10s if graceful shutdown fails
+    setTimeout(() => {
+      logger.error("Graceful shutdown timed out, forcing exit");
+      process.exit(1);
+    }, 10000);
+  }
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 })();

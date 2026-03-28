@@ -22,8 +22,12 @@ import { eq, desc, and, like, gte, lte, sql } from "drizzle-orm";
 
 const sqlite = new Database("data.db");
 sqlite.pragma("journal_mode = WAL");
+sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite);
+
+// Expose sqlite instance for graceful shutdown and transactions
+export { sqlite };
 
 // Ensure auth tables exist
 sqlite.exec(`
@@ -115,6 +119,11 @@ sqlite.exec(`
     used_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Lookup indexes for auth operations
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_invite_codes_code ON invite_codes(code);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
 `);
 
 // Add file columns to vault_documents if they don't exist (Sprint 3 migration)
@@ -598,23 +607,29 @@ export class DatabaseStorage implements IStorage {
     db.delete(users).where(eq(users.id, userId)).run();
   }
 
-  // Cascade delete all family data
+  // Cascade delete all family data — wrapped in a transaction for atomicity
   async deleteFamilyData(familyId: number): Promise<void> {
-    db.delete(messages).where(eq(messages.familyId, familyId)).run();
-    db.delete(vaultDocuments).where(eq(vaultDocuments.familyId, familyId)).run();
-    db.delete(calendarEvents).where(eq(calendarEvents.familyId, familyId)).run();
-    db.delete(mediaItems).where(eq(mediaItems.familyId, familyId)).run();
-    db.delete(thinkingOfYou).where(eq(thinkingOfYou.familyId, familyId)).run();
-    db.delete(photos).where(eq(photos.familyId, familyId)).run();
-    db.delete(locations).where(eq(locations.familyId, familyId)).run();
-    db.delete(chatMessages).where(eq(chatMessages.familyId, familyId)).run();
-    db.delete(memoryAtoms).where(eq(memoryAtoms.familyId, familyId)).run();
-    db.delete(memoryCompilations).where(eq(memoryCompilations.familyId, familyId)).run();
-    db.delete(subscriptions).where(eq(subscriptions.familyId, familyId)).run();
-    db.delete(inviteCodes).where(eq(inviteCodes.familyId, familyId)).run();
-    db.delete(users).where(eq(users.familyId, familyId)).run();
-    db.delete(familyMembers).where(eq(familyMembers.familyId, familyId)).run();
-    db.delete(families).where(eq(families.id, familyId)).run();
+    const deleteAll = sqlite.transaction(() => {
+      db.delete(memoryCompilations).where(eq(memoryCompilations.familyId, familyId)).run();
+      db.delete(memoryAtoms).where(eq(memoryAtoms.familyId, familyId)).run();
+      db.delete(passwordResetTokens).where(
+        sql`user_id IN (SELECT id FROM users WHERE family_id = ${familyId})`
+      ).run();
+      db.delete(messages).where(eq(messages.familyId, familyId)).run();
+      db.delete(vaultDocuments).where(eq(vaultDocuments.familyId, familyId)).run();
+      db.delete(calendarEvents).where(eq(calendarEvents.familyId, familyId)).run();
+      db.delete(mediaItems).where(eq(mediaItems.familyId, familyId)).run();
+      db.delete(thinkingOfYou).where(eq(thinkingOfYou.familyId, familyId)).run();
+      db.delete(photos).where(eq(photos.familyId, familyId)).run();
+      db.delete(locations).where(eq(locations.familyId, familyId)).run();
+      db.delete(chatMessages).where(eq(chatMessages.familyId, familyId)).run();
+      db.delete(subscriptions).where(eq(subscriptions.familyId, familyId)).run();
+      db.delete(inviteCodes).where(eq(inviteCodes.familyId, familyId)).run();
+      db.delete(users).where(eq(users.familyId, familyId)).run();
+      db.delete(familyMembers).where(eq(familyMembers.familyId, familyId)).run();
+      db.delete(families).where(eq(families.id, familyId)).run();
+    });
+    deleteAll();
   }
 }
 

@@ -8,6 +8,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import { logger } from "./logger";
 
 // ─── S3 Configuration ──────────────────────────────────────────────
 
@@ -50,6 +51,30 @@ function ensureLocalDir(familyId: number): string {
   return dir;
 }
 
+// ─── Retry helper for S3 operations ────────────────────────────────
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  retries = 2,
+): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt < retries) {
+        const delay = (attempt + 1) * 1000;
+        logger.warn({ err, attempt: attempt + 1, label }, `S3 ${label} failed, retrying in ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+      } else {
+        logger.error({ err, label }, `S3 ${label} failed after ${retries + 1} attempts`);
+        throw err;
+      }
+    }
+  }
+  throw new Error("unreachable");
+}
+
 // ─── Upload File ───────────────────────────────────────────────────
 
 export async function uploadFile(
@@ -59,13 +84,17 @@ export async function uploadFile(
 ): Promise<string> {
   if (isS3Configured()) {
     const client = getS3Client();
-    await client.send(
-      new PutObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
-      }),
+    await withRetry(
+      () =>
+        client.send(
+          new PutObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: key,
+            Body: body,
+            ContentType: contentType,
+          }),
+        ),
+      "upload",
     );
     return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
   }
@@ -85,11 +114,15 @@ export async function uploadFile(
 export async function deleteFile(key: string): Promise<void> {
   if (isS3Configured()) {
     const client = getS3Client();
-    await client.send(
-      new DeleteObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: key,
-      }),
+    await withRetry(
+      () =>
+        client.send(
+          new DeleteObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: key,
+          }),
+        ),
+      "delete",
     );
     return;
   }
