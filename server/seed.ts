@@ -3,21 +3,22 @@ import {
   families, familyMembers, messages, vaultDocuments, mediaItems, calendarEvents, locations, subscriptions, chatMessages, thinkingOfYou
 } from "@shared/schema";
 import { memoryEngine } from "./memory-engine";
+import { logger } from "./logger";
 
 export async function seedDatabase() {
   if (process.env.NODE_ENV === "production") {
-    console.log("Skipping seed in production");
+    logger.info("Skipping seed in production");
     return;
   }
 
   // Check if the family already exists
   const existingFamily = db.select().from(families).get();
   if (existingFamily) {
-    console.log("Database already seeded, skipping...");
+    logger.info("Database already seeded, skipping...");
     return;
   }
 
-  console.log("Seeding database with Foss family data...");
+  logger.info("Seeding database with Foss family data...");
 
   // Create the family
   const family = db.insert(families).values({
@@ -323,19 +324,19 @@ export async function seedDatabase() {
   }).run();
 
   // Seed memory atoms from all existing content
-  console.log("Ingesting seed content into Memory Atoms...");
+  logger.info("Ingesting seed content into Memory Atoms...");
   try {
     const count = await memoryEngine.ingestAllExisting(family.id);
-    console.log(`  Ingested ${count} memory atoms from seed data`);
+    logger.info({ count }, "Ingested memory atoms from seed data");
 
     // Generate a sample weekly compilation
     const weekEnd = now.toISOString();
     const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     await memoryEngine.generateWeeklyCompilation(family.id, weekStart, weekEnd);
-    console.log("  Generated sample weekly compilation");
+    logger.info("Generated sample weekly compilation");
   } catch (err) {
-    console.log("  Memory ingestion skipped (non-fatal):", err);
+    logger.warn({ err }, "Memory ingestion skipped (non-fatal)");
   }
 
-  console.log("Database seeded successfully!");
+  logger.info("Database seeded successfully!");
 }

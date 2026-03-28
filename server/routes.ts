@@ -14,14 +14,18 @@ import cookieParser from "cookie-parser";
 import { doubleCsrf } from "csrf-csrf";
 import rateLimit from "express-rate-limit";
 import { WebSocketServer, WebSocket } from "ws";
-import { storage, db } from "./storage";
+import { storage, db, sqlite } from "./storage";
 import { seedDatabase } from "./seed";
 import { memoryEngine } from "./memory-engine";
 import { stripe, isStripeConfigured, STRIPE_PRICES, STRIPE_WEBHOOK_SECRET } from "./stripe";
 import { sanitizeInputMiddleware } from "./sanitize";
 import { sendEmail } from "./email";
 import { uploadFile, deleteFile, getSignedDownloadUrl, buildFileKey, isS3Configured } from "./storage-s3";
+import { logger } from "./logger";
 import {
+  families,
+  familyMembers,
+  users,
   insertMessageSchema,
   insertVaultDocumentSchema,
   insertCalendarEventSchema,
@@ -153,6 +157,30 @@ const forgotPasswordLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const joinLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: { message: "Too many join attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: { message: "Too many password reset attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const generalApiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100,
+  message: { message: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ─── CSRF Protection ───────────────────────────────────────────────
 const csrfExcludedPaths = [
   "/api/auth/login",
@@ -183,7 +211,7 @@ const {
 export async function registerRoutes(
   httpServer: Server,
   app: Express
-): Promise<Server> {
+): Promise<{ httpServer: Server; wss: WebSocketServer }> {
   // Seed database on start
   await seedDatabase();
 
@@ -210,6 +238,9 @@ export async function registerRoutes(
   app.use(passport.initialize());
   app.use(passport.session());
   app.use(cookieParser());
+
+  // General rate limit on all API routes (safety net)
+  app.use("/api", generalApiLimiter);
 
   passport.use(
     new LocalStrategy(
@@ -272,22 +303,19 @@ export async function registerRoutes(
       if (existing) {
         return res.status(400).json({ message: "Email already registered" });
       }
-      const family = await storage.createFamily({ name: familyName });
-      const member = await storage.createFamilyMember({
-        familyId: family.id,
-        name,
-        role: "parent",
-        emoji: "👤",
-      });
+      // Wrap registration in a transaction for atomicity
       const { hash } = hashPassword(password);
-      const user = await storage.createUser({
-        familyId: family.id,
-        email,
-        password: hash,
-        name,
-        memberId: member.id,
-        role: "admin",
+      const registerTx = sqlite.transaction(() => {
+        const family = db.insert(families).values({ name: familyName }).returning().get();
+        const member = db.insert(familyMembers).values({
+          familyId: family.id, name, role: "parent", emoji: "👤",
+        }).returning().get();
+        const user = db.insert(users).values({
+          familyId: family.id, email, password: hash, name, memberId: member.id, role: "admin",
+        }).returning().get();
+        return user;
       });
+      const user = registerTx();
       const sessionUser: Express.User = {
         id: user.id,
         familyId: user.familyId,
@@ -339,7 +367,7 @@ export async function registerRoutes(
     res.json({ inviteCode: code });
   });
 
-  app.post("/api/auth/join", async (req: Request, res: Response) => {
+  app.post("/api/auth/join", joinLimiter, async (req: Request, res: Response) => {
     try {
       const { inviteCode, email, password, name, role } = req.body;
       if (!inviteCode || !email || !password || !name) {
@@ -350,21 +378,19 @@ export async function registerRoutes(
       const existing = await storage.getUserByEmail(email);
       if (existing) return res.status(400).json({ message: "Email already registered" });
       const memberRole = role === "child" ? "child" : "parent";
-      const member = await storage.createFamilyMember({
-        familyId: invite.familyId,
-        name,
-        role: memberRole === "child" ? "child" : "mom",
-        emoji: "👤",
-      });
       const { hash } = hashPassword(password);
-      const user = await storage.createUser({
-        familyId: invite.familyId,
-        email,
-        password: hash,
-        name,
-        memberId: member.id,
-        role: role || "parent",
+      const joinTx = sqlite.transaction(() => {
+        const member = db.insert(familyMembers).values({
+          familyId: invite.familyId, name,
+          role: memberRole === "child" ? "child" : "mom", emoji: "👤",
+        }).returning().get();
+        const user = db.insert(users).values({
+          familyId: invite.familyId, email, password: hash, name,
+          memberId: member.id, role: role || "parent",
+        }).returning().get();
+        return user;
       });
+      const user = joinTx();
       const sessionUser: Express.User = {
         id: user.id,
         familyId: user.familyId,
@@ -396,11 +422,16 @@ export async function registerRoutes(
 
         const appUrl = process.env.APP_URL || "http://localhost:5000";
         const resetLink = `${appUrl}/#/reset-password?token=${token}`;
-        await sendEmail({
-          to: user.email,
-          subject: "MyOhana — Password Reset",
-          html: `<p>Hi ${user.name},</p><p>Click the link below to reset your password. This link expires in 30 minutes.</p><p><a href="${resetLink}">${resetLink}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
-        });
+        try {
+          await sendEmail({
+            to: user.email,
+            subject: "MyOhana — Password Reset",
+            html: `<p>Hi ${user.name},</p><p>Click the link below to reset your password. This link expires in 30 minutes.</p><p><a href="${resetLink}">${resetLink}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+          });
+        } catch (emailErr) {
+          // Don't fail the request if email send fails — token is still saved
+          logger.error({ err: emailErr }, "Failed to send password reset email");
+        }
       }
 
       // Always return success to not reveal whether email exists
@@ -411,7 +442,7 @@ export async function registerRoutes(
   });
 
   // ─── Reset Password ──────────────────────────────────────────────
-  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+  app.post("/api/auth/reset-password", resetPasswordLimiter, async (req: Request, res: Response) => {
     try {
       const { token, newPassword } = req.body;
       if (!token || !newPassword) return res.status(400).json({ message: "Token and new password are required" });
@@ -437,12 +468,26 @@ export async function registerRoutes(
     return res.status(401).json({ message: "Not authenticated" });
   }
 
-  // Apply requireAuth to all /api routes EXCEPT /api/auth/*, /api/csrf-token, /api/billing/webhook, /api/config
+  // ─── Pagination Helper ──────────────────────────────────────────
+  function paginate<T>(items: T[], req: Request): T[] {
+    const page = Number(req.query.page);
+    const limit = Number(req.query.limit);
+    if (!page && !limit) return items; // backward compatible
+    const p = Math.max(page || 1, 1);
+    const l = Math.min(Math.max(limit || 50, 1), 100);
+    return items.slice((p - 1) * l, p * l);
+  }
+
+  // Apply requireAuth to all /api routes EXCEPT public ones
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/auth/") || req.path.startsWith("/auth")) return next();
     if (req.path === "/csrf-token") return next();
     if (req.path === "/billing/webhook") return next();
+    if (req.path === "/chat/webhook") return next();
     if (req.path === "/config") return next();
+    if (req.path === "/health") return next();
+    if (req.path === "/graph/schema") return next();
+    if (req.path === "/graph/mcp-manifest") return next();
     return requireAuth(req, res, next);
   });
 
@@ -630,7 +675,7 @@ export async function registerRoutes(
       if (!family) return res.status(404).json({ message: "No family found" });
       const recipientId = req.query.recipientId ? Number(req.query.recipientId) : undefined;
       const msgs = await storage.getMessages(family.id, recipientId);
-      res.json(msgs);
+      res.json(paginate(msgs, req));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch messages" });
     }
@@ -659,7 +704,7 @@ export async function registerRoutes(
       const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const docs = await storage.getVaultDocuments(family.id);
-      res.json(docs);
+      res.json(paginate(docs, req));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch vault documents" });
     }
@@ -754,7 +799,7 @@ export async function registerRoutes(
         try {
           await deleteFile(doc.fileKey);
         } catch (err) {
-          console.error("Failed to delete file from storage, orphaned:", doc.fileKey, err);
+          logger.error({ err, fileKey: doc.fileKey }, "Failed to delete file from storage, orphaned");
         }
       }
       await storage.deleteVaultDocument(doc.id);
@@ -790,7 +835,7 @@ export async function registerRoutes(
       const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const events = await storage.getCalendarEvents(family.id);
-      res.json(events);
+      res.json(paginate(events, req));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch calendar events" });
     }
@@ -819,7 +864,7 @@ export async function registerRoutes(
       const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const items = await storage.getMediaItems(family.id);
-      res.json(items);
+      res.json(paginate(items, req));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch media items" });
     }
@@ -859,7 +904,7 @@ export async function registerRoutes(
       const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const pulses = await storage.getThinkingOfYouPulses(family.id);
-      res.json(pulses);
+      res.json(paginate(pulses, req));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch pulses" });
     }
@@ -897,7 +942,7 @@ export async function registerRoutes(
       const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const allPhotos = await storage.getPhotos(family.id);
-      res.json(allPhotos);
+      res.json(paginate(allPhotos, req));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch photos" });
     }
@@ -1245,7 +1290,7 @@ export async function registerRoutes(
       const family = await storage.getFamilyById(req.user!.familyId);
       if (!family) return res.status(404).json({ message: "No family found" });
       const locs = await storage.getLocations(family.id);
-      res.json(locs);
+      res.json(paginate(locs, req));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch locations" });
     }
@@ -1842,7 +1887,7 @@ export async function registerRoutes(
 
       res.json({ url: session.url });
     } catch (error: any) {
-      console.error("Stripe subscribe error:", error);
+      logger.error({ err: error }, "Stripe subscribe error");
       res.status(500).json({ message: "Failed to create checkout session" });
     }
   });
@@ -1866,7 +1911,7 @@ export async function registerRoutes(
         res.json({ subscription: updated });
       }
     } catch (error: any) {
-      console.error("Stripe cancel error:", error);
+      logger.error({ err: error }, "Stripe cancel error");
       res.status(500).json({ message: "Failed to cancel subscription" });
     }
   });
@@ -1891,7 +1936,7 @@ export async function registerRoutes(
 
       res.json({ url: portalSession.url });
     } catch (error: any) {
-      console.error("Stripe portal error:", error);
+      logger.error({ err: error }, "Stripe portal error");
       res.status(500).json({ message: "Failed to create billing portal session" });
     }
   });
@@ -1911,11 +1956,11 @@ export async function registerRoutes(
       const rawBody = (req as any).rawBody as Buffer;
       event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
     } catch (err: any) {
-      console.error("Webhook signature verification failed:", err.message);
-      return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+      logger.error({ err }, "Webhook signature verification failed");
+      return res.status(400).json({ error: "Webhook signature verification failed" });
     }
 
-    console.log(`Stripe webhook received: ${event.type} (${event.id})`);
+    logger.info({ eventType: event.type, eventId: event.id }, "Stripe webhook received");
 
     try {
       switch (event.type) {
@@ -1923,7 +1968,7 @@ export async function registerRoutes(
           const session = event.data.object as import("stripe").Stripe.Checkout.Session;
           const familyId = parseInt(session.metadata?.familyId || "0", 10);
           if (!familyId) {
-            console.error("Webhook: checkout.session.completed missing familyId in metadata");
+            logger.error("Webhook: checkout.session.completed missing familyId in metadata");
             break;
           }
 
@@ -1968,7 +2013,7 @@ export async function registerRoutes(
               stripeSubscriptionId,
             });
           }
-          console.log(`Webhook: subscription created/updated for family ${familyId}`);
+          logger.info({ familyId }, "Webhook: subscription created/updated");
           break;
         }
 
@@ -1983,7 +2028,7 @@ export async function registerRoutes(
               status: "active",
               ...(expiresAt ? { expiresAt } : {}),
             });
-            console.log(`Webhook: invoice.paid — subscription ${sub.id} renewed`);
+            logger.info({ subscriptionId: sub.id }, "Webhook: invoice.paid — subscription renewed");
           }
           break;
         }
@@ -1994,7 +2039,7 @@ export async function registerRoutes(
           const sub = await storage.getSubscriptionByStripeCustomerId(customerId);
           if (sub) {
             await storage.updateSubscriptionStatus(sub.id, "past_due");
-            console.log(`Webhook: invoice.payment_failed — subscription ${sub.id} marked past_due`);
+            logger.info({ subscriptionId: sub.id }, "Webhook: invoice.payment_failed — marked past_due");
           }
           break;
         }
@@ -2005,7 +2050,7 @@ export async function registerRoutes(
           const sub = await storage.getSubscriptionByStripeCustomerId(customerId);
           if (sub) {
             await storage.updateSubscriptionStatus(sub.id, "cancelled");
-            console.log(`Webhook: customer.subscription.deleted — subscription ${sub.id} cancelled`);
+            logger.info({ subscriptionId: sub.id }, "Webhook: subscription deleted — cancelled");
           }
           break;
         }
@@ -2033,16 +2078,16 @@ export async function registerRoutes(
             }
 
             await storage.updateSubscription(sub.id, { status, plan, priceMonthly });
-            console.log(`Webhook: customer.subscription.updated — subscription ${sub.id} updated`);
+            logger.info({ subscriptionId: sub.id }, "Webhook: subscription updated");
           }
           break;
         }
 
         default:
-          console.log(`Webhook: unhandled event type ${event.type}`);
+          logger.info({ eventType: event.type }, "Webhook: unhandled event type");
       }
     } catch (error: any) {
-      console.error(`Webhook handler error for ${event.type}:`, error);
+      logger.error({ err: error, eventType: event.type }, "Webhook handler error");
       // Return 200 to avoid Stripe retrying on our processing errors
     }
 
@@ -2217,5 +2262,5 @@ export async function registerRoutes(
     }
   });
 
-  return httpServer;
+  return { httpServer, wss };
 }
