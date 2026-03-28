@@ -30,8 +30,95 @@ export const db = drizzle(sqlite);
 // Expose sqlite instance for graceful shutdown and transactions
 export { sqlite };
 
-// Ensure auth tables exist
+// Ensure all tables exist
 sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS families (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS family_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    age INTEGER,
+    date_of_birth TEXT,
+    emoji TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    author_id INTEGER NOT NULL,
+    recipient_id INTEGER,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'text',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS vault_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    uploaded_by_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    description TEXT,
+    expires_at TEXT,
+    file_url TEXT,
+    file_key TEXT,
+    file_size INTEGER,
+    mime_type TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS calendar_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    start_date TEXT NOT NULL,
+    end_date TEXT,
+    location TEXT,
+    member_ids TEXT,
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS media_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    added_by_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    type TEXT NOT NULL,
+    approved_for_ages TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS thinking_of_you (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    recipient_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    uploaded_by_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    caption TEXT,
+    taken_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    member_id INTEGER NOT NULL,
+    latitude TEXT NOT NULL,
+    longitude TEXT NOT NULL,
+    address TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     family_id INTEGER NOT NULL,
@@ -127,7 +214,7 @@ sqlite.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
 `);
 
-// Add file columns to vault_documents if they don't exist (Sprint 3 migration)
+// Add file columns to vault_documents if they don't exist (Sprint 3 migration — kept for existing DBs)
 try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN file_url TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN file_key TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN file_size INTEGER`); } catch {}
