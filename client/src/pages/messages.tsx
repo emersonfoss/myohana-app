@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Filter, MessageCircle } from "lucide-react";
+import { Plus, Filter, Heart } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -89,15 +89,40 @@ export default function Messages() {
   };
 
   const typeBadge = (type: string) => {
-    if (type === "rose") return <Badge variant="secondary" className="text-[10px]">Rose</Badge>;
-    if (type === "thorn") return <Badge variant="destructive" className="text-[10px]">Thorn</Badge>;
-    return null;
+    if (type === "rose")
+      return (
+        <Badge variant="secondary" className="text-[10px] rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300 border-0">
+          🌹 Rose
+        </Badge>
+      );
+    if (type === "thorn")
+      return (
+        <Badge variant="secondary" className="text-[10px] rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 border-0">
+          🌵 Thorn
+        </Badge>
+      );
+    return (
+      <Badge variant="secondary" className="text-[10px] rounded-full border-0">
+        💬 Text
+      </Badge>
+    );
+  };
+
+  const cardBg = (type: string) => {
+    if (type === "rose") return "bg-rose-50/50 dark:bg-rose-950/20 border-rose-200/60 dark:border-rose-800/30";
+    if (type === "thorn") return "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/60 dark:border-amber-800/30";
+    return "";
   };
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto page-enter" data-testid="messages-page">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-xl font-bold">Messages</h1>
+        <h1
+          className="text-2xl font-bold tracking-tight"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          Messages
+        </h1>
         <div className="flex items-center gap-2">
           <Select value={filter} onValueChange={setFilter}>
             <SelectTrigger className="w-36" data-testid="select-message-filter">
@@ -106,8 +131,8 @@ export default function Messages() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Messages</SelectItem>
-              <SelectItem value="rose">Roses</SelectItem>
-              <SelectItem value="thorn">Thorns</SelectItem>
+              <SelectItem value="rose">🌹 Roses</SelectItem>
+              <SelectItem value="thorn">🌵 Thorns</SelectItem>
               {members.map((m) => (
                 <SelectItem key={m.id} value={String(m.id)}>
                   {m.emoji} {m.name.split(" ")[0]}
@@ -125,7 +150,12 @@ export default function Messages() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>New Message</DialogTitle>
+                <DialogTitle
+                  style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                  className="text-xl"
+                >
+                  New Message
+                </DialogTitle>
               </DialogHeader>
               <div className="space-y-4 mt-2">
                 <div>
@@ -161,7 +191,7 @@ export default function Messages() {
                   <Textarea
                     value={newMsg.content}
                     onChange={(e) => setNewMsg((p) => ({ ...p, content: e.target.value }))}
-                    placeholder="Write your message..."
+                    placeholder="Share something with your family..."
                     rows={5}
                     data-testid="input-message-content"
                   />
@@ -176,9 +206,9 @@ export default function Messages() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="text">Regular</SelectItem>
-                      <SelectItem value="rose">Rose</SelectItem>
-                      <SelectItem value="thorn">Thorn</SelectItem>
+                      <SelectItem value="text">💬 Regular</SelectItem>
+                      <SelectItem value="rose">🌹 Rose</SelectItem>
+                      <SelectItem value="thorn">🌵 Thorn</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -205,9 +235,16 @@ export default function Messages() {
       ) : filteredMessages.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <MessageCircle className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
-            <h3 className="font-semibold text-lg mb-1">No messages yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">Send the first one to your family.</p>
+            <Heart className="h-12 w-12 mx-auto mb-4 text-rose-400" />
+            <h3
+              className="font-semibold text-xl mb-2"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              No messages yet
+            </h3>
+            <p className="text-sm text-muted-foreground mb-5 max-w-xs mx-auto">
+              Send your first rose to someone you love.
+            </p>
             <Button onClick={() => setDialogOpen(true)} data-testid="button-first-message">
               <Plus className="h-4 w-4 mr-2" />
               New Message
@@ -226,7 +263,7 @@ export default function Messages() {
             return (
               <Card
                 key={msg.id}
-                className="cursor-pointer card-hover"
+                className={`cursor-pointer card-hover ${cardBg(msg.type)}`}
                 onClick={() => setExpandedId(isExpanded ? null : msg.id)}
                 data-testid={`message-card-${msg.id}`}
               >
@@ -237,12 +274,18 @@ export default function Messages() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm">
+                        <span
+                          className="font-semibold text-sm"
+                          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "1rem" }}
+                        >
                           {author?.name || "Unknown"}
                         </span>
                         {recipient && (
                           <span className="text-xs text-muted-foreground">
-                            to {recipient.name.split(" ")[0]}
+                            to{" "}
+                            <span style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+                              {recipient.name.split(" ")[0]}
+                            </span>
                           </span>
                         )}
                         {!recipient && msg.recipientId === null && (

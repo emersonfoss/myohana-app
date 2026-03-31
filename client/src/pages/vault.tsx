@@ -33,8 +33,8 @@ const CATEGORIES = ["legal", "health", "insurance", "identity", "financial"] as 
 
 const categoryConfig: Record<string, { label: string; color: string }> = {
   legal: { label: "Legal", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
-  health: { label: "Health", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
-  insurance: { label: "Insurance", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300" },
+  health: { label: "Health", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  insurance: { label: "Insurance", color: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300" },
   identity: { label: "Identity", color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
   financial: { label: "Financial", color: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300" },
 };
@@ -42,9 +42,9 @@ const categoryConfig: Record<string, { label: string; color: string }> = {
 function getExpiryStatus(expiresAt: string | null) {
   if (!expiresAt) return null;
   const days = differenceInDays(parseISO(expiresAt), new Date());
-  if (days < 0) return { label: "Expired", icon: AlertTriangle, className: "text-destructive" };
+  if (days < 0) return { label: "Expired", icon: AlertTriangle, className: "text-[#C1440E] dark:text-[#e07050]" };
   if (days <= 30) return { label: `Expires in ${days}d`, icon: Clock, className: "text-amber-600 dark:text-amber-400" };
-  return { label: `Valid until ${format(parseISO(expiresAt), "MMM d, yyyy")}`, icon: CheckCircle, className: "text-secondary" };
+  return { label: `Valid until ${format(parseISO(expiresAt), "MMM d, yyyy")}`, icon: CheckCircle, className: "text-emerald-600 dark:text-emerald-400" };
 }
 
 export default function Vault() {
@@ -218,7 +218,15 @@ export default function Vault() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto page-enter" data-testid="vault-page">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-bold">Family Vault</h1>
+        <div className="flex items-center gap-2.5">
+          <Shield className="h-6 w-6 text-amber-600 dark:text-amber-500" />
+          <h1
+            className="text-3xl font-bold tracking-tight"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Family Vault
+          </h1>
+        </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-document">
@@ -226,9 +234,9 @@ export default function Vault() {
               Add Document
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="border-amber-100 dark:border-amber-900/30">
             <DialogHeader>
-              <DialogTitle>Add Document</DialogTitle>
+              <DialogTitle style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }} className="text-xl">Add Document</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-2">
               <div>
@@ -284,8 +292,8 @@ export default function Vault() {
                 <div
                   className={`mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
                     isDragging
-                      ? "border-primary bg-primary/5"
-                      : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                      ? "border-amber-400 bg-amber-50 dark:bg-amber-900/10"
+                      : "border-amber-200 dark:border-amber-800/40 hover:border-amber-400 dark:hover:border-amber-600 bg-amber-50/40 dark:bg-amber-900/5"
                   }`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
@@ -316,12 +324,12 @@ export default function Vault() {
                     </div>
                   ) : (
                     <div className="py-2">
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-                      <p className="text-sm text-muted-foreground">
-                        Drag & drop or click to browse
+                      <Upload className="h-8 w-8 mx-auto mb-2 text-amber-500/60" />
+                      <p className="text-sm text-muted-foreground font-medium">
+                        Store your important family documents
                       </p>
-                      <p className="text-xs text-muted-foreground/70 mt-1">
-                        PDF, JPEG, PNG, DOCX, XLSX (max 25MB)
+                      <p className="text-xs text-muted-foreground/60 mt-1">
+                        Drag & drop or click · PDF, JPEG, PNG, DOCX, XLSX (max 25MB)
                       </p>
                     </div>
                   )}
@@ -363,9 +371,16 @@ export default function Vault() {
       ) : Object.keys(grouped).length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <Shield className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
-            <h3 className="font-semibold text-lg mb-1">Your vault is empty</h3>
-            <p className="text-sm text-muted-foreground mb-4">Start by adding important family documents.</p>
+            <Shield className="h-12 w-12 mx-auto mb-4 text-amber-400/60" />
+            <h3
+              className="font-bold text-xl mb-1"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              Your family vault is empty
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Store important documents like passports, insurance, and medical records.
+            </p>
             <Button onClick={() => setDialogOpen(true)} data-testid="button-first-document">
               <Plus className="h-4 w-4 mr-2" />
               Add First Document
@@ -379,7 +394,7 @@ export default function Vault() {
           const config = categoryConfig[cat];
           return (
             <div key={cat} className="space-y-2">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <h2 className="text-xs font-semibold text-amber-700/70 dark:text-amber-400/70 uppercase tracking-widest">
                 {config.label}
               </h2>
               {docs.map((doc) => {
@@ -387,23 +402,23 @@ export default function Vault() {
                 const uploader = members.find((m) => m.id === doc.uploadedById);
                 const FileTypeIcon = getFileIcon(doc.mimeType);
                 return (
-                  <Card key={doc.id} className="card-hover" data-testid={`vault-doc-${doc.id}`}>
+                  <Card key={doc.id} className="card-hover border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/50 dark:shadow-amber-900/10" data-testid={`vault-doc-${doc.id}`}>
                     <CardContent className="py-3 px-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex gap-3 flex-1 min-w-0">
                           {doc.fileKey ? (
                             <div className="mt-0.5">
-                              <FileTypeIcon className="h-5 w-5 text-muted-foreground" />
+                              <FileTypeIcon className="h-5 w-5 text-amber-600/70 dark:text-amber-500/70" />
                             </div>
                           ) : null}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-medium text-sm">{doc.name}</span>
-                              <span className={`inline-flex text-[10px] px-1.5 py-0.5 rounded-md font-medium ${config.color}`}>
+                              <span className={`inline-flex text-[10px] px-2 py-0.5 rounded-full font-medium ${config.color}`}>
                                 {config.label}
                               </span>
                               {!doc.fileKey && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-medium bg-muted text-muted-foreground">
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-muted text-muted-foreground">
                                   Metadata only
                                 </span>
                               )}

@@ -122,10 +122,12 @@ export default function Photos() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Camera className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">Photos</h1>
-          </div>
+          <h1
+            className="text-2xl font-bold tracking-tight mb-1"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Family Photos
+          </h1>
           <p className="text-sm text-muted-foreground">
             {filteredPhotos.length} {filteredPhotos.length === 1 ? "photo" : "photos"}
             {family ? ` in the ${family.name} album` : ""}
@@ -133,6 +135,7 @@ export default function Photos() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Member filter chips */}
           <Select value={filterMember} onValueChange={setFilterMember}>
             <SelectTrigger className="w-[140px]" data-testid="select-photo-filter">
               <SelectValue placeholder="Filter by" />
@@ -156,7 +159,12 @@ export default function Photos() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Upload a Photo</DialogTitle>
+                <DialogTitle
+                  style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                  className="text-xl"
+                >
+                  Upload a Photo
+                </DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 {/* File input */}
@@ -167,7 +175,7 @@ export default function Photos() {
                       <img
                         src={previewUrl}
                         alt="Preview"
-                        className="w-full h-48 object-cover rounded-md"
+                        className="w-full h-48 object-cover rounded-lg"
                       />
                       <Button
                         size="icon"
@@ -181,13 +189,13 @@ export default function Photos() {
                     </div>
                   ) : (
                     <div
-                      className="border-2 border-dashed rounded-md p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                      className="border-2 border-dashed border-amber-300/70 dark:border-amber-600/50 rounded-xl p-8 text-center cursor-pointer hover:border-amber-400 dark:hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors"
                       onClick={() => fileInputRef.current?.click()}
                       data-testid="dropzone-photo"
                     >
-                      <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">Click to select an image</p>
-                      <p className="text-xs text-muted-foreground mt-1">JPEG, PNG, GIF, or WebP (max 10MB)</p>
+                      <Camera className="h-9 w-9 mx-auto text-amber-400 mb-2" />
+                      <p className="text-sm text-muted-foreground font-medium">Drop your family moments here</p>
+                      <p className="text-xs text-muted-foreground mt-1">or click to select — JPEG, PNG, GIF, or WebP (max 10MB)</p>
                     </div>
                   )}
                   <input
@@ -259,16 +267,21 @@ export default function Photos() {
       {isLoading ? (
         <div className="columns-1 sm:columns-2 md:columns-3 gap-4 space-y-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-48 rounded-lg break-inside-avoid" />
+            <Skeleton key={i} className="h-48 rounded-xl break-inside-avoid" />
           ))}
         </div>
       ) : filteredPhotos.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <Camera className="h-12 w-12 mb-4 empty-state-icon" />
-            <h3 className="font-semibold text-lg mb-1">No photos yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Upload your first family photo to start building your album.
+            <Camera className="h-12 w-12 mb-4 text-amber-300" />
+            <h3
+              className="font-semibold text-xl mb-2"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              No photos yet
+            </h3>
+            <p className="text-sm text-muted-foreground mb-5 max-w-xs">
+              Upload your first family moment to start building your album.
             </p>
             <Button onClick={() => setUploadOpen(true)} data-testid="button-upload-first">
               <Plus className="h-4 w-4 mr-2" />
@@ -283,20 +296,25 @@ export default function Photos() {
             return (
               <Card
                 key={photo.id}
-                className="overflow-hidden cursor-pointer group hover:ring-2 hover:ring-primary/30 transition-all break-inside-avoid"
+                className="overflow-hidden cursor-pointer group break-inside-avoid border border-amber-100/60 dark:border-amber-900/30 shadow-[0_2px_12px_rgba(180,120,60,0.07)] hover:shadow-[0_4px_20px_rgba(180,120,60,0.14)] transition-all duration-300 rounded-xl"
                 onClick={() => setLightboxIndex(idx)}
                 data-testid={`photo-card-${photo.id}`}
               >
-                <div className="relative overflow-hidden">
+                <div className="relative overflow-hidden rounded-t-xl">
                   <img
                     src={photo.url}
                     alt={photo.caption || "Family photo"}
-                    className="w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    className="w-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
                   />
                 </div>
                 <CardContent className="p-3 space-y-1">
                   {photo.caption && (
-                    <p className="text-sm font-medium line-clamp-2">{photo.caption}</p>
+                    <p
+                      className="text-sm font-medium line-clamp-2"
+                      style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                    >
+                      {photo.caption}
+                    </p>
                   )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{uploader?.emoji} {uploader?.name.split(" ")[0] || "Unknown"}</span>
@@ -315,14 +333,14 @@ export default function Photos() {
 
       {/* Lightbox with prev/next navigation */}
       <Dialog open={lightboxIndex !== null} onOpenChange={() => setLightboxIndex(null)}>
-        <DialogContent className="sm:max-w-2xl p-0 overflow-hidden">
+        <DialogContent className="sm:max-w-2xl p-0 overflow-hidden bg-[#1a1510] border-[#2e2418]">
           {lightboxPhoto && (
             <>
               <div className="relative">
                 <img
                   src={lightboxPhoto.url}
                   alt={lightboxPhoto.caption || "Family photo"}
-                  className="w-full max-h-[70vh] object-contain bg-black"
+                  className="w-full max-h-[70vh] object-contain bg-[#1a1510]"
                   data-testid="lightbox-image"
                 />
                 {/* Navigation arrows */}
@@ -353,11 +371,16 @@ export default function Photos() {
                   {(lightboxIndex ?? 0) + 1} / {filteredPhotos.length}
                 </div>
               </div>
-              <div className="p-4 space-y-2">
+              <div className="p-5 space-y-2 bg-[#1a1510]">
                 {lightboxPhoto.caption && (
-                  <p className="font-medium">{lightboxPhoto.caption}</p>
+                  <p
+                    className="font-medium text-amber-100/90 text-lg"
+                    style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                  >
+                    {lightboxPhoto.caption}
+                  </p>
                 )}
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <div className="flex items-center gap-3 text-sm text-amber-200/60">
                   <span>
                     {members.find((m) => m.id === lightboxPhoto.uploadedById)?.emoji}{" "}
                     {members.find((m) => m.id === lightboxPhoto.uploadedById)?.name || "Unknown"}

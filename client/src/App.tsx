@@ -9,7 +9,6 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Sun, Moon } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
@@ -111,7 +110,7 @@ function AppLayout() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-1 p-2 border-b">
+          <header className="flex items-center justify-between gap-1 p-2 border-b border-[#C4944A]/15">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <ThemeToggle />
           </header>
@@ -136,9 +135,37 @@ function AuthGate() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="space-y-4 text-center">
-          <Skeleton className="h-12 w-12 rounded-full mx-auto" />
-          <Skeleton className="h-4 w-32 mx-auto" />
+        <div className="flex flex-col items-center gap-3">
+          <div className="opacity-80 animate-pulse">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 28 28"
+              fill="none"
+              aria-label="MyOhana loading"
+              style={{ color: "#C4944A" }}
+            >
+              <circle cx="14" cy="6" r="2.5" fill="currentColor" opacity="0.9" />
+              <circle cx="7" cy="12" r="2" fill="currentColor" opacity="0.7" />
+              <circle cx="21" cy="12" r="2" fill="currentColor" opacity="0.7" />
+              <circle cx="9" cy="21" r="2.2" fill="currentColor" opacity="0.8" />
+              <circle cx="19" cy="21" r="2.2" fill="currentColor" opacity="0.8" />
+              <line x1="14" y1="6" x2="7" y2="12" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+              <line x1="14" y1="6" x2="21" y2="12" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+              <line x1="7" y1="12" x2="9" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+              <line x1="21" y1="12" x2="19" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+              <line x1="9" y1="21" x2="19" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+            </svg>
+          </div>
+          <p
+            className="text-lg font-semibold tracking-tight"
+            style={{
+              fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
+              color: "#C4944A",
+            }}
+          >
+            MyOhana
+          </p>
         </div>
       </div>
     );

@@ -105,7 +105,15 @@ export default function Media() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto page-enter" data-testid="media-page">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-xl font-bold">Media Room</h1>
+        <div className="flex items-center gap-2.5">
+          <Play className="h-6 w-6 text-amber-600 dark:text-amber-500" />
+          <h1
+            className="text-3xl font-bold tracking-tight"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Media Room
+          </h1>
+        </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-media">
@@ -113,9 +121,9 @@ export default function Media() {
               Add Media
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="border-amber-100 dark:border-amber-900/30">
             <DialogHeader>
-              <DialogTitle>Add Media</DialogTitle>
+              <DialogTitle style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }} className="text-xl">Add Media</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-2">
               <div>
@@ -205,7 +213,7 @@ export default function Media() {
 
       {/* Videos section */}
       <div>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        <h2 className="text-xs font-semibold text-amber-700/70 dark:text-amber-400/70 uppercase tracking-widest mb-3">
           Videos
         </h2>
         {isLoading ? (
@@ -215,9 +223,14 @@ export default function Media() {
         ) : videos.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
-              <Film className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
-              <h3 className="font-semibold text-lg mb-1">Your media room is empty</h3>
-              <p className="text-sm text-muted-foreground mb-4">Add some approved content for the family.</p>
+              <Play className="h-12 w-12 mx-auto mb-4 text-amber-400/60" />
+              <h3
+                className="font-bold text-xl mb-1"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+              >
+                Start building your family media library
+              </h3>
+              <p className="text-sm text-muted-foreground mb-4">Add videos, books, and music.</p>
               <Button onClick={() => setDialogOpen(true)} data-testid="button-first-media">
                 <Plus className="h-4 w-4 mr-2" />
                 Add First Video
@@ -231,11 +244,11 @@ export default function Media() {
               return (
                 <Card
                   key={item.id}
-                  className="overflow-hidden cursor-pointer group card-hover"
+                  className="overflow-hidden cursor-pointer group card-hover border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none"
                   data-testid={`media-card-${item.id}`}
                 >
                   <div
-                    className="relative aspect-video bg-muted"
+                    className="relative aspect-video bg-amber-50/50 dark:bg-amber-900/10 rounded-t-md overflow-hidden"
                     onClick={() => setPlayerUrl(item.url)}
                   >
                     <img
@@ -246,22 +259,26 @@ export default function Media() {
                         (e.target as HTMLImageElement).style.display = "none";
                       }}
                     />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
-                        <Play className="h-5 w-5 text-foreground ml-0.5" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-amber-900/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="w-10 h-10 rounded-full bg-white/95 shadow-md flex items-center justify-center">
+                        <Play className="h-5 w-5 text-amber-700 ml-0.5" />
                       </div>
                     </div>
                   </div>
                   <CardContent className="py-3 px-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="font-medium text-sm truncate">{item.title}</p>
+                        <p className="font-semibold text-sm truncate">{item.title}</p>
                         <div className="flex items-center gap-1.5 mt-1">
-                          <Badge variant="secondary" className="text-[10px]">
+                          <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 rounded-full">
                             {item.type}
                           </Badge>
                           {ages.map((age: string, idx: number) => (
-                            <Badge key={idx} variant="outline" className="text-[10px]">
+                            <Badge key={idx} variant="outline" className={`text-[10px] rounded-full ${
+                              age === "all" ? "border-emerald-300 text-emerald-700 dark:text-emerald-400" :
+                              age === "13+" ? "border-amber-400 text-amber-700 dark:text-amber-400" :
+                              "border-amber-200 text-amber-600 dark:text-amber-500"
+                            }`}>
                               {age}
                             </Badge>
                           ))}
@@ -289,14 +306,19 @@ export default function Media() {
 
       {/* Books section */}
       <div>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        <h2 className="text-xs font-semibold text-amber-700/70 dark:text-amber-400/70 uppercase tracking-widest mb-3">
           Books
         </h2>
         {books.length === 0 ? (
-          <Card>
+          <Card className="border-amber-100/80 dark:border-amber-900/20">
             <CardContent className="py-12 text-center">
-              <BookOpen className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
-              <h3 className="font-semibold text-sm mb-1">No books added yet</h3>
+              <BookOpen className="h-10 w-10 mx-auto mb-3 text-amber-400/50" />
+              <h3
+                className="font-semibold text-base mb-1"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+              >
+                No books added yet
+              </h3>
               <p className="text-xs text-muted-foreground mb-3">Add a book for the family using the Add Media button above.</p>
             </CardContent>
           </Card>
@@ -305,18 +327,27 @@ export default function Media() {
             {books.map((item) => {
               const ages = item.approvedForAges ? JSON.parse(item.approvedForAges) : [];
               return (
-                <Card key={item.id} className="card-hover" data-testid={`book-card-${item.id}`}>
+                <Card key={item.id} className="card-hover border-amber-100/80 dark:border-amber-900/20" data-testid={`book-card-${item.id}`}>
                   <CardContent className="py-3 px-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <p className="font-medium text-sm truncate">{item.title}</p>
+                          <BookOpen className="h-4 w-4 text-amber-600/70 dark:text-amber-500/70 shrink-0" />
+                          <p
+                            className="font-semibold text-sm truncate"
+                            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                          >
+                            {item.title}
+                          </p>
                         </div>
                         {ages.length > 0 && (
                           <div className="flex items-center gap-1 mt-1.5 ml-6">
                             {ages.map((age: string, idx: number) => (
-                              <Badge key={idx} variant="outline" className="text-[10px]">
+                              <Badge key={idx} variant="outline" className={`text-[10px] rounded-full ${
+                                age === "all" ? "border-emerald-300 text-emerald-700 dark:text-emerald-400" :
+                                age === "13+" ? "border-amber-400 text-amber-700 dark:text-amber-400" :
+                                "border-amber-200 text-amber-600 dark:text-amber-500"
+                              }`}>
                                 {age}
                               </Badge>
                             ))}

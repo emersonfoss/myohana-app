@@ -123,7 +123,15 @@ export default function CalendarPage() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto page-enter" data-testid="calendar-page">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-xl font-bold">Calendar</h1>
+        <div className="flex items-center gap-2.5">
+          <CalendarIcon className="h-6 w-6 text-amber-600 dark:text-amber-500" />
+          <h1
+            className="text-3xl font-bold tracking-tight"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Family Calendar
+          </h1>
+        </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-event">
@@ -131,9 +139,9 @@ export default function CalendarPage() {
               Add Event
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="border-amber-100 dark:border-amber-900/30">
             <DialogHeader>
-              <DialogTitle>Add Event</DialogTitle>
+              <DialogTitle style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }} className="text-xl">Add Event</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-2">
               <div>
@@ -198,24 +206,30 @@ export default function CalendarPage() {
       </div>
 
       {/* Calendar grid */}
-      <Card>
+      <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none">
         <CardContent className="pt-4 pb-2 px-3">
           <div className="flex items-center justify-between mb-4">
             <Button
               size="icon"
               variant="ghost"
               onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              className="hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400"
               data-testid="button-prev-month"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <h2 className="font-semibold" data-testid="text-current-month">
+            <h2
+              className="font-semibold text-lg"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+              data-testid="text-current-month"
+            >
               {format(currentMonth, "MMMM yyyy")}
             </h2>
             <Button
               size="icon"
               variant="ghost"
               onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              className="hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400"
               data-testid="button-next-month"
             >
               <ChevronRight className="h-4 w-4" />
@@ -240,14 +254,14 @@ export default function CalendarPage() {
               return (
                 <div
                   key={idx}
-                  className={`min-h-[48px] p-1 text-center border-t border-border/50 ${
-                    !inMonth ? "opacity-30" : ""
+                  className={`min-h-[48px] p-1 text-center border-t border-amber-100/60 dark:border-amber-900/20 ${
+                    !inMonth ? "opacity-30" : "hover:bg-amber-50/40 dark:hover:bg-amber-900/10 transition-colors"
                   }`}
                 >
                   <span
                     className={`inline-flex items-center justify-center w-6 h-6 text-xs rounded-full ${
                       today_
-                        ? "bg-primary text-primary-foreground font-bold"
+                        ? "ring-2 ring-amber-500 ring-offset-1 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 font-bold"
                         : "font-medium"
                     }`}
                   >
@@ -256,7 +270,7 @@ export default function CalendarPage() {
                   {dayEvents.slice(0, 2).map((ev) => (
                     <div
                       key={ev.id}
-                      className="text-[9px] bg-primary/10 text-primary rounded px-1 mt-0.5 truncate"
+                      className="text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 rounded px-1 mt-0.5 truncate"
                       title={ev.title}
                     >
                       {ev.title}
@@ -274,7 +288,7 @@ export default function CalendarPage() {
 
       {/* Upcoming events */}
       <div>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        <h2 className="text-xs font-semibold text-amber-700/70 dark:text-amber-400/70 uppercase tracking-widest mb-3">
           Upcoming Events
         </h2>
         {isLoading ? (
@@ -284,9 +298,14 @@ export default function CalendarPage() {
         ) : upcomingEvents.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
-              <CalendarIcon className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
-              <h3 className="font-semibold text-lg mb-1">No events this week</h3>
-              <p className="text-sm text-muted-foreground mb-4">Your family's schedule will appear here.</p>
+              <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-amber-400/60" />
+              <h3
+                className="font-bold text-xl mb-1"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+              >
+                No events yet
+              </h3>
+              <p className="text-sm text-muted-foreground mb-4">Add your family's important dates.</p>
               <Button onClick={() => setDialogOpen(true)} data-testid="button-first-event">
                 <Plus className="h-4 w-4 mr-2" />
                 Add First Event
@@ -302,15 +321,18 @@ export default function CalendarPage() {
                   ).filter(Boolean)
                 : [];
               return (
-                <Card key={ev.id} className="card-hover" data-testid={`event-card-${ev.id}`}>
+                <Card key={ev.id} className="card-hover border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid={`event-card-${ev.id}`}>
                   <CardContent className="py-3 px-4">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-sm">{ev.title}</p>
+                          <p className="font-semibold text-sm">{ev.title}</p>
                           {sourceBadge(ev.source)}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p
+                          className="text-sm text-amber-700 dark:text-amber-400 font-medium mt-0.5"
+                          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                        >
                           {format(parseISO(ev.startDate), "EEE, MMM d 'at' h:mm a")}
                         </p>
                         {ev.location && (
@@ -320,9 +342,13 @@ export default function CalendarPage() {
                           </p>
                         )}
                       </div>
-                      <div className="flex gap-1 shrink-0">
+                      <div className="flex gap-0.5 shrink-0">
                         {eventMembers.map((m: FamilyMember) => (
-                          <span key={m.id} title={m.name} className="text-sm">
+                          <span
+                            key={m.id}
+                            title={m.name}
+                            className="text-sm w-7 h-7 rounded-full bg-amber-50 dark:bg-amber-900/20 ring-2 ring-amber-300 dark:ring-amber-700 inline-flex items-center justify-center"
+                          >
                             {m.emoji}
                           </span>
                         ))}

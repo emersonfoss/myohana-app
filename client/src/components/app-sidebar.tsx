@@ -70,12 +70,13 @@ const navGroups = [
 function OhanaLogo() {
   return (
     <svg
-      width="28"
-      height="28"
+      width="34"
+      height="34"
       viewBox="0 0 28 28"
       fill="none"
       aria-label="MyOhana logo"
       className="shrink-0"
+      style={{ color: "#C4944A" }}
     >
       {/* Five dots in a constellation — family stars */}
       <circle cx="14" cy="6" r="2.5" fill="currentColor" opacity="0.9" />
@@ -84,11 +85,11 @@ function OhanaLogo() {
       <circle cx="9" cy="21" r="2.2" fill="currentColor" opacity="0.8" />
       <circle cx="19" cy="21" r="2.2" fill="currentColor" opacity="0.8" />
       {/* Connecting lines */}
-      <line x1="14" y1="6" x2="7" y2="12" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
-      <line x1="14" y1="6" x2="21" y2="12" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
-      <line x1="7" y1="12" x2="9" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
-      <line x1="21" y1="12" x2="19" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
-      <line x1="9" y1="21" x2="19" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
+      <line x1="14" y1="6" x2="7" y2="12" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+      <line x1="14" y1="6" x2="21" y2="12" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+      <line x1="7" y1="12" x2="9" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+      <line x1="21" y1="12" x2="19" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
+      <line x1="9" y1="21" x2="19" y2="21" stroke="currentColor" strokeWidth="0.8" opacity="0.4" />
     </svg>
   );
 }
@@ -114,11 +115,11 @@ function UserFooter() {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground text-center truncate">{user.name}</p>
+      <p className="text-xs text-muted-foreground/70 text-center truncate">{user.name}</p>
       <Button
         variant="ghost"
         size="sm"
-        className="w-full text-muted-foreground hover:text-destructive"
+        className="w-full text-muted-foreground/60 hover:text-[#C07A5A] hover:bg-[#C07A5A]/8 transition-colors"
         onClick={() => logoutMutation.mutate()}
         data-testid="button-logout"
       >
@@ -132,14 +133,28 @@ function UserFooter() {
 export function AppSidebar() {
   const [location] = useLocation();
 
+  const { data: familyData } = useQuery<{ family: { name: string }; members: unknown[] }>({
+    queryKey: ["/api/family"],
+  });
+
+  const familyName = familyData?.family?.name;
+
   return (
     <Sidebar data-testid="sidebar-nav">
-      <SidebarHeader className="p-4">
-        <Link href="/" className="flex items-center gap-2">
+      <SidebarHeader className="p-4 pb-3">
+        <Link href="/" className="flex items-center gap-2.5">
           <OhanaLogo />
-          <span className="text-lg font-bold tracking-tight text-foreground">
-            MyOhana
-          </span>
+          <div className="flex flex-col leading-none">
+            <span
+              className="text-2xl font-semibold tracking-tight"
+              style={{ fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)", color: "#C4944A" }}
+            >
+              {familyName ? `${familyName}` : "MyOhana"}
+            </span>
+            <span className="text-[10px] tracking-widest text-muted-foreground/50 uppercase mt-0.5">
+              {familyName ? "Est. 2026" : "your family hub"}
+            </span>
+          </div>
         </Link>
       </SidebarHeader>
 
@@ -147,7 +162,7 @@ export function AppSidebar() {
         {navGroups.map((group, groupIdx) => (
           <SidebarGroup key={groupIdx} className={groupIdx === 0 ? "" : "pt-2"}>
             {group.label && (
-              <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold px-3">
+              <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/50 font-semibold px-3">
                 {group.label}
               </SidebarGroupLabel>
             )}
@@ -161,10 +176,17 @@ export function AppSidebar() {
                       <SidebarMenuButton
                         asChild
                         data-active={isActive}
-                        className={isActive ? "bg-primary/10 text-primary font-medium" : ""}
+                        className={
+                          isActive
+                            ? "relative font-medium bg-[#C4944A]/10 text-[#A07038] border-l-2 border-[#C4944A] rounded-l-none"
+                            : "text-muted-foreground/80 hover:text-foreground hover:bg-muted/60"
+                        }
                       >
                         <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                          <item.icon className="shrink-0" />
+                          <item.icon
+                            className="shrink-0"
+                            style={isActive ? { color: "#C4944A" } : undefined}
+                          />
                           <span>{item.title}</span>
                         </Link>
                       </SidebarMenuButton>
@@ -177,7 +199,7 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 space-y-2">
+      <SidebarFooter className="p-4 space-y-2 border-t border-[#C4944A]/10">
         <UserFooter />
       </SidebarFooter>
     </Sidebar>

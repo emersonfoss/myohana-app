@@ -10,9 +10,9 @@ import type { Family, FamilyMember, Location } from "@shared/schema";
 
 function getStatusDot(updatedAt: string) {
   const mins = differenceInMinutes(new Date(), parseISO(updatedAt));
-  if (mins < 30) return { color: "bg-green-500", label: "Active" };
-  if (mins < 120) return { color: "bg-yellow-500", label: "Recent" };
-  return { color: "bg-gray-400", label: "Inactive" };
+  if (mins < 30) return { color: "bg-emerald-500", pulse: true, label: "Active" };
+  if (mins < 120) return { color: "bg-amber-400", pulse: false, label: "Recent" };
+  return { color: "bg-gray-300 dark:bg-gray-600", pulse: false, label: "Inactive" };
 }
 
 function MiniMap({ locations, members }: { locations: Location[]; members: FamilyMember[] }) {
@@ -50,7 +50,7 @@ function MiniMap({ locations, members }: { locations: Location[]; members: Famil
   }
 
   return (
-    <div className="relative w-full h-48 rounded-xl bg-gradient-to-br from-primary/5 via-primary/10 to-accent/10 border border-primary/10 overflow-hidden">
+    <div className="relative w-full h-48 rounded-xl bg-gradient-to-br from-amber-50 via-orange-50/60 to-rose-50/30 dark:from-amber-900/10 dark:via-orange-900/5 dark:to-rose-900/5 border border-amber-100 dark:border-amber-900/20 overflow-hidden">
       {/* Subtle grid lines */}
       <div className="absolute inset-0 opacity-[0.06]" style={{
         backgroundImage: "linear-gradient(0deg, currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
@@ -137,9 +137,14 @@ export default function Pulse() {
       {/* Header with heartbeat animation */}
       <div className="text-center pt-4">
         <div className="relative inline-block">
-          <MapPin className="h-8 w-8 mx-auto text-primary mb-3 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]" />
+          <MapPin className="h-8 w-8 mx-auto text-amber-600 dark:text-amber-500 mb-3 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]" />
         </div>
-        <h1 className="text-xl font-bold">Family Pulse</h1>
+        <h1
+          className="text-3xl font-bold tracking-tight"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          Family Pulse
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Everyone's safe. Everyone's where they should be.
         </p>
@@ -157,7 +162,11 @@ export default function Pulse() {
         <Button
           onClick={handleShareLocation}
           disabled={sharing || !family}
-          className={`gap-2 transition-all ${shared ? "bg-green-600 hover:bg-green-600" : ""}`}
+          className={`gap-2 transition-all shadow-sm ${
+            shared
+              ? "bg-emerald-600 hover:bg-emerald-600 shadow-emerald-200 dark:shadow-emerald-900/30"
+              : "shadow-amber-200 dark:shadow-amber-900/20"
+          }`}
           data-testid="button-share-location"
         >
           {sharing ? (
@@ -181,7 +190,7 @@ export default function Pulse() {
 
       {/* Member location cards */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide text-center">
+        <h2 className="text-xs font-semibold text-amber-700/70 dark:text-amber-400/70 uppercase tracking-widest text-center">
           Family Members
         </h2>
         {isLoading ? (
@@ -197,10 +206,10 @@ export default function Pulse() {
               const status = loc ? getStatusDot(loc.updatedAt) : null;
 
               return (
-                <Card key={member.id} className="overflow-hidden card-hover" data-testid={`location-member-${member.id}`}>
+                <Card key={member.id} className="overflow-hidden card-hover border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid={`location-member-${member.id}`}>
                   <CardContent className="p-4 flex items-center gap-4">
                     {/* Emoji avatar */}
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-2xl shrink-0">
+                    <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-900/20 ring-2 ring-amber-200 dark:ring-amber-800/40 flex items-center justify-center text-2xl shrink-0">
                       {member.emoji}
                     </div>
                     {/* Info */}
@@ -208,21 +217,30 @@ export default function Pulse() {
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm">{member.name.split(" ")[0]}</span>
                         {status && (
-                          <span className={`w-2 h-2 rounded-full ${status.color} shrink-0`} title={status.label} />
+                          <span
+                            className={`w-2 h-2 rounded-full ${status.color} shrink-0 ${
+                              status.pulse ? "animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]" : ""
+                            }`}
+                            title={status.label}
+                          />
                         )}
                       </div>
                       {loc ? (
                         <>
                           <p className="text-sm text-muted-foreground truncate">
-                            <MapPin className="h-3 w-3 inline mr-1" />
-                            {loc.address || `${parseFloat(loc.latitude).toFixed(4)}, ${parseFloat(loc.longitude).toFixed(4)}`}
+                            <MapPin className="h-3 w-3 inline mr-1 text-amber-500/70" />
+                            {loc.address || (
+                              <span className="text-xs text-muted-foreground/60 font-mono">
+                                {parseFloat(loc.latitude).toFixed(4)}, {parseFloat(loc.longitude).toFixed(4)}
+                              </span>
+                            )}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-muted-foreground/70">
                             Last seen: {formatDistanceToNow(parseISO(loc.updatedAt), { addSuffix: true })}
                           </p>
                         </>
                       ) : (
-                        <p className="text-sm text-muted-foreground italic">No location shared yet</p>
+                        <p className="text-sm text-muted-foreground/60 italic">No location shared yet</p>
                       )}
                     </div>
                   </CardContent>

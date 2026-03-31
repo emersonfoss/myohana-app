@@ -28,7 +28,7 @@ export default function ThinkingOfYou() {
     onSuccess: (_data, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/thinking-of-you"] });
       const recipient = members.find((m) => m.id === variables.recipientId);
-      toast({ title: "Pulse sent", description: `${recipient?.name.split(" ")[0] || "They"} knows you're thinking of them.` });
+      toast({ title: "Pulse sent 💛", description: `${recipient?.name.split(" ")[0] || "They"} knows you're thinking of them.` });
     },
   });
 
@@ -49,18 +49,23 @@ export default function ThinkingOfYou() {
   const recentPulses = (pulses || []).slice(0, 20);
 
   return (
-    <div className="p-4 sm:p-6 space-y-10 max-w-2xl mx-auto page-enter" data-testid="thinking-of-you-page">
+    <div className="p-4 sm:p-6 space-y-12 max-w-2xl mx-auto page-enter" data-testid="thinking-of-you-page">
       {/* Header */}
-      <div className="text-center pt-4">
-        <Heart className="h-8 w-8 mx-auto text-primary mb-3" />
-        <h1 className="text-xl font-bold">Thinking of You</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+      <div className="text-center pt-6">
+        <Heart className="h-10 w-10 mx-auto text-rose-400 fill-rose-200 mb-4" />
+        <h1
+          className="text-3xl font-bold tracking-tight mb-2"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          Thinking of You
+        </h1>
+        <p className="text-sm text-muted-foreground">
           Let someone know they're on your mind
         </p>
       </div>
 
       {/* Family member grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 justify-items-center">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 justify-items-center">
         {members.map((member) => {
           const isAnimating = animatingId === member.id;
           return (
@@ -71,20 +76,25 @@ export default function ThinkingOfYou() {
               data-testid={`pulse-member-${member.id}`}
             >
               <div className="relative">
-                {/* Ripple effect */}
+                {/* Warm gold ripple effect */}
                 {isAnimating && (
-                  <div className="absolute inset-0 w-20 h-20 rounded-full bg-primary/20 animate-ripple" />
+                  <div className="absolute inset-0 w-24 h-24 rounded-full bg-amber-400/20 animate-ripple" />
                 )}
                 <div
-                  className={`w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center text-3xl transition-transform ${
+                  className={`w-24 h-24 rounded-full bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center text-4xl transition-all duration-200 ring-2 ring-transparent group-hover:ring-amber-300/70 dark:group-hover:ring-amber-500/50 group-hover:shadow-[0_0_0_6px_rgba(251,191,36,0.12)] ${
                     isAnimating ? "animate-pulse-warm" : "group-hover:scale-105"
                   }`}
                 >
                   {member.emoji}
                 </div>
               </div>
-              <div className="text-center">
-                <p className="font-semibold text-sm">{member.name.split(" ")[0]}</p>
+              <div className="text-center transition-opacity">
+                <p
+                  className="font-semibold text-sm group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors"
+                  style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "1.05rem" }}
+                >
+                  {member.name.split(" ")[0]}
+                </p>
                 <p className="text-xs text-muted-foreground capitalize">{member.role}</p>
               </div>
             </button>
@@ -93,8 +103,10 @@ export default function ThinkingOfYou() {
       </div>
 
       {/* Recent pulses feed */}
-      <div>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4 text-center">
+      <div className="space-y-4">
+        <h2
+          className="text-center text-xs font-semibold text-muted-foreground uppercase tracking-widest"
+        >
           Recent Pulses
         </h2>
         {isLoading ? (
@@ -103,10 +115,17 @@ export default function ThinkingOfYou() {
           </div>
         ) : recentPulses.length === 0 ? (
           <Card>
-            <CardContent className="py-12 text-center">
-              <Heart className="h-12 w-12 mx-auto mb-4 empty-state-icon" />
-              <h3 className="font-semibold text-lg mb-1">No pulses yet</h3>
-              <p className="text-sm text-muted-foreground">Let someone know you're thinking of them.</p>
+            <CardContent className="py-14 text-center">
+              <Heart className="h-12 w-12 mx-auto mb-4 text-rose-300" />
+              <h3
+                className="font-semibold text-xl mb-2"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+              >
+                Nobody's sent a pulse yet
+              </h3>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                Be the first to brighten someone's day.
+              </p>
             </CardContent>
           </Card>
         ) : (
@@ -117,19 +136,26 @@ export default function ThinkingOfYou() {
               return (
                 <div
                   key={pulse.id}
-                  className="flex items-center justify-between gap-3 py-2 px-3 rounded-md bg-card"
+                  className="flex items-center justify-between gap-3 py-3 px-4 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-100/80 dark:border-amber-900/30"
                   data-testid={`pulse-${pulse.id}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{sender?.emoji || "?"}</span>
-                    <span className="text-sm font-medium">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-base">{sender?.emoji || "?"}</span>
+                    <span
+                      className="text-sm font-medium"
+                      style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "1rem" }}
+                    >
                       {sender?.name.split(" ")[0] || "Unknown"}
                     </span>
-                    <Heart className="h-3 w-3 text-primary fill-primary" />
-                    <span className="text-sm font-medium">
+                    <span className="text-sm text-muted-foreground">thought of</span>
+                    <span
+                      className="text-sm font-medium"
+                      style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "1rem" }}
+                    >
                       {recipient?.name.split(" ")[0] || "Unknown"}
                     </span>
-                    <span className="text-sm">{recipient?.emoji || "?"}</span>
+                    <span className="text-base">{recipient?.emoji || "?"}</span>
+                    <span className="text-amber-500 text-sm">💛</span>
                   </div>
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
                     {formatDistanceToNow(parseISO(pulse.createdAt), { addSuffix: true })}

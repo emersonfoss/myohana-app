@@ -26,7 +26,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink, Download } from "lucide-react";
+import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink, Download, Settings as SettingsIcon } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -215,28 +215,41 @@ export default function Settings() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div>
-        <h1
-          className="text-3xl font-bold tracking-tight"
-          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-          data-testid="settings-title"
-        >
-          Settings
-        </h1>
-        <p className="text-muted-foreground mt-1">Manage your family hub</p>
+        <div className="flex items-center gap-2.5">
+          <SettingsIcon className="h-6 w-6 text-amber-600 dark:text-amber-500" />
+          <h1
+            className="text-3xl font-bold tracking-tight"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            data-testid="settings-title"
+          >
+            Settings
+          </h1>
+        </div>
+        <p className="text-muted-foreground mt-1 ml-8">Manage your family hub</p>
       </div>
 
       {/* Subscription Section */}
-      <Card data-testid="subscription-card">
+      <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid="subscription-card">
         <CardHeader className="flex flex-row items-center gap-3">
-          <CreditCard className="h-5 w-5 text-primary" />
-          <CardTitle className="text-lg">Subscription</CardTitle>
+          <CreditCard className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+          <CardTitle
+            className="text-lg"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Subscription
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {sub && sub.status === "active" ? (
             <>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Badge variant="default" className="text-sm" data-testid="plan-badge">
+                  <Badge
+                    variant="default"
+                    className="text-sm rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0"
+                    data-testid="plan-badge"
+                    style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                  >
                     {planLabel} — {formatPrice(sub.priceMonthly)}/mo
                   </Badge>
                   <div className="flex items-center gap-1.5">
@@ -340,10 +353,15 @@ export default function Settings() {
       </Card>
 
       {/* Family Settings Section */}
-      <Card data-testid="family-settings-card">
+      <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid="family-settings-card">
         <CardHeader className="flex flex-row items-center gap-3">
-          <Users className="h-5 w-5 text-primary" />
-          <CardTitle className="text-lg">Family Settings</CardTitle>
+          <Users className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+          <CardTitle
+            className="text-lg"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Family Settings
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -366,7 +384,7 @@ export default function Settings() {
                 <Input
                   value={inviteMutation.data.inviteCode}
                   readOnly
-                  className="font-mono"
+                  className="font-mono bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-200"
                   data-testid="invite-code-display"
                 />
                 <Button
@@ -396,12 +414,19 @@ export default function Settings() {
               {members.map((m) => (
                 <div
                   key={m.id}
-                  className="flex items-center gap-3 p-2 rounded-md bg-muted/50"
+                  className="flex items-center gap-3 p-2.5 rounded-lg bg-amber-50/60 dark:bg-amber-900/10 border border-amber-100/60 dark:border-amber-900/20"
                   data-testid={`member-${m.id}`}
                 >
-                  <span className="text-xl">{m.emoji}</span>
+                  <span className="text-xl w-9 h-9 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center shrink-0">
+                    {m.emoji}
+                  </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{m.name}</p>
+                    <p
+                      className="text-sm font-semibold truncate"
+                      style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                    >
+                      {m.name}
+                    </p>
                     <p className="text-xs text-muted-foreground capitalize">{m.role}</p>
                   </div>
                 </div>
@@ -412,10 +437,15 @@ export default function Settings() {
       </Card>
 
       {/* Account Section */}
-      <Card data-testid="account-card">
+      <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid="account-card">
         <CardHeader className="flex flex-row items-center gap-3">
-          <Mail className="h-5 w-5 text-primary" />
-          <CardTitle className="text-lg">Account</CardTitle>
+          <Mail className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+          <CardTitle
+            className="text-lg"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Account
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -435,7 +465,12 @@ export default function Settings() {
               if (!open) { setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword(""); }
             }}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" data-testid="button-change-password">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                  data-testid="button-change-password"
+                >
                   Change Password
                 </Button>
               </DialogTrigger>
@@ -502,6 +537,7 @@ export default function Settings() {
             <Button
               variant="outline"
               size="sm"
+              className="border-muted-foreground/30 text-muted-foreground hover:bg-muted/50"
               data-testid="button-export-data"
               onClick={async () => {
                 try {
@@ -528,13 +564,13 @@ export default function Settings() {
             </Button>
           </div>
 
-          <div className="pt-2 border-t">
+          <div className="pt-2 border-t border-amber-100/60 dark:border-amber-900/20">
             <AlertDialog onOpenChange={(open) => { if (!open) setDeleteConfirmEmail(""); }}>
               <AlertDialogTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-destructive hover:text-destructive"
+                  className="text-[#C1440E] dark:text-[#e07050] hover:text-[#C1440E] dark:hover:text-[#e07050] hover:bg-[#C1440E]/5"
                   data-testid="button-delete-account"
                 >
                   <AlertTriangle className="h-4 w-4 mr-2" />

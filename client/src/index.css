@@ -43,18 +43,19 @@
   --chart-3: 140 18% 48%;
   --chart-4: 30 45% 60%;
   --chart-5: 350 45% 55%;
-  --font-sans: 'Plus Jakarta Sans', 'DM Sans', sans-serif;
-  --font-serif: Georgia, serif;
+  --font-sans: 'Nunito', 'Plus Jakarta Sans', 'DM Sans', sans-serif;
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
   --radius: .5rem;
-  --shadow-2xs: 0px 2px 0px 0px hsl(30 20% 20% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(30 20% 20% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(30 20% 20% / 0.00), 0px 1px 2px -1px hsl(30 20% 20% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(30 20% 20% / 0.00), 0px 1px 2px -1px hsl(30 20% 20% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(30 20% 20% / 0.00), 0px 2px 4px -1px hsl(30 20% 20% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(30 20% 20% / 0.00), 0px 4px 6px -1px hsl(30 20% 20% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(30 20% 20% / 0.00), 0px 8px 10px -1px hsl(30 20% 20% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(30 20% 20% / 0.00);
+  --shadow-2xs: 0px 1px 2px 0px hsl(30 20% 20% / 0.04);
+  --shadow-xs: 0px 2px 4px 0px hsl(30 20% 20% / 0.05);
+  --shadow-sm: 0px 2px 4px 0px hsl(30 20% 20% / 0.06), 0px 1px 2px -1px hsl(30 20% 20% / 0.04);
+  --shadow: 0px 3px 6px 0px hsl(30 20% 20% / 0.07), 0px 1px 3px -1px hsl(30 20% 20% / 0.05);
+  --shadow-md: 0px 4px 8px 0px hsl(30 20% 20% / 0.08), 0px 2px 4px -1px hsl(30 20% 20% / 0.05);
+  --shadow-lg: 0px 6px 14px 0px hsl(30 20% 20% / 0.09), 0px 4px 6px -1px hsl(30 20% 20% / 0.06);
+  --shadow-xl: 0px 10px 24px 0px hsl(30 20% 20% / 0.10), 0px 8px 10px -1px hsl(30 20% 20% / 0.07);
+  --shadow-2xl: 0px 20px 40px 0px hsl(30 20% 20% / 0.13);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -122,14 +123,14 @@
   --chart-3: 140 18% 50%;
   --chart-4: 30 40% 55%;
   --chart-5: 350 40% 55%;
-  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 2px 4px -1px hsl(0 0% 0% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 4px 6px -1px hsl(0 0% 0% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 8px 10px -1px hsl(0 0% 0% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+  --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.10);
+  --shadow-xs: 0px 2px 4px 0px hsl(0 0% 0% / 0.14);
+  --shadow-sm: 0px 2px 4px 0px hsl(0 0% 0% / 0.16), 0px 1px 2px -1px hsl(0 0% 0% / 0.12);
+  --shadow: 0px 3px 6px 0px hsl(0 0% 0% / 0.18), 0px 1px 3px -1px hsl(0 0% 0% / 0.14);
+  --shadow-md: 0px 4px 8px 0px hsl(0 0% 0% / 0.20), 0px 2px 4px -1px hsl(0 0% 0% / 0.16);
+  --shadow-lg: 0px 6px 14px 0px hsl(0 0% 0% / 0.24), 0px 4px 6px -1px hsl(0 0% 0% / 0.18);
+  --shadow-xl: 0px 10px 24px 0px hsl(0 0% 0% / 0.28), 0px 8px 10px -1px hsl(0 0% 0% / 0.20);
+  --shadow-2xl: 0px 20px 40px 0px hsl(0 0% 0% / 0.36);
 
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
@@ -214,11 +215,71 @@
 
 /* Smooth page transitions */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .page-enter {
-  animation: fadeIn 0.25s ease-out;
+  animation: fadeIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Stagger fade-in for lists */
+@keyframes staggerFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stagger-fade-in > * {
+  opacity: 0;
+  animation: staggerFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.stagger-fade-in > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-fade-in > *:nth-child(2) { animation-delay: 0.10s; }
+.stagger-fade-in > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger-fade-in > *:nth-child(4) { animation-delay: 0.20s; }
+.stagger-fade-in > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger-fade-in > *:nth-child(6) { animation-delay: 0.30s; }
+.stagger-fade-in > *:nth-child(n+7) { animation-delay: 0.35s; }
+
+/* Gentle float for decorative elements */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Warm glow for interactive hover states */
+@keyframes warmGlow {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(38 55% 53% / 0); }
+  50% { box-shadow: 0 0 16px 4px hsl(38 55% 53% / 0.18); }
+}
+.warm-glow-hover:hover {
+  animation: warmGlow 1.6s ease-in-out infinite;
+}
+
+/* Warm gradient utility classes */
+.bg-warm-gradient {
+  background: radial-gradient(ellipse at 60% 0%, hsl(38 45% 93%) 0%, hsl(40 30% 96%) 55%, hsl(36 20% 94%) 100%);
+}
+
+.bg-hero-gradient {
+  background:
+    radial-gradient(ellipse at 30% 20%, hsl(38 60% 88% / 0.55) 0%, transparent 55%),
+    radial-gradient(ellipse at 75% 75%, hsl(14 45% 85% / 0.35) 0%, transparent 50%),
+    hsl(40 30% 95%);
+}
+.dark .bg-hero-gradient {
+  background:
+    radial-gradient(ellipse at 30% 20%, hsl(38 30% 15% / 0.6) 0%, transparent 55%),
+    radial-gradient(ellipse at 75% 75%, hsl(14 20% 12% / 0.4) 0%, transparent 50%),
+    hsl(30 12% 9%);
+}
+
+.text-gradient-warm {
+  background: linear-gradient(135deg, hsl(38 55% 48%) 0%, hsl(14 55% 52%) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 /* Button press feedback */
@@ -229,6 +290,20 @@ button:active:not(:disabled) {
 /* Empty state styling */
 .empty-state-icon {
   @apply text-muted-foreground/40;
+}
+
+.empty-state {
+  @apply flex flex-col items-center justify-center text-center py-12 px-6 gap-3;
+}
+.empty-state svg, .empty-state .empty-state-icon {
+  @apply text-primary/40 mb-1;
+}
+.empty-state h3 {
+  @apply font-semibold text-foreground text-base;
+  font-family: var(--font-display);
+}
+.empty-state p {
+  @apply text-sm text-muted-foreground max-w-xs;
 }
 
 /* Better dialog scrollability on small screens */

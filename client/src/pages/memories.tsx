@@ -71,33 +71,36 @@ function MemoryAtomCard({ atom, members }: { atom: MemoryAtom; members: FamilyMe
   const dateStr = format(parseISO(atom.occurredAt), "MMM d, yyyy");
 
   return (
-    <Card className="card-hover" data-testid={`memory-atom-${atom.id}`}>
-      <CardContent className="p-4">
-        <div className="flex gap-3">
+    <Card
+      className="card-hover border-amber-100/50 dark:border-amber-900/20 shadow-[0_2px_10px_rgba(180,120,60,0.06)] hover:shadow-[0_3px_16px_rgba(180,120,60,0.12)] transition-all duration-300"
+      data-testid={`memory-atom-${atom.id}`}
+    >
+      <CardContent className="p-5">
+        <div className="flex gap-4">
           {/* Source icon */}
           <div className="shrink-0 mt-0.5">
             {atom.sourceType === "photo" && meta.photoUrl ? (
-              <div className="w-16 h-16 rounded-lg overflow-hidden">
+              <div className="w-16 h-16 rounded-xl overflow-hidden">
                 <img src={meta.photoUrl} alt={atom.title} className="w-full h-full object-cover" />
               </div>
             ) : atom.sourceType === "pulse" ? (
               <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
-                <Heart className="h-5 w-5 text-rose-500" />
+                <Heart className="h-5 w-5 text-rose-400" />
               </div>
             ) : (
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <Icon className="h-5 w-5 text-primary" />
+              <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center">
+                <Icon className="h-5 w-5 text-amber-500 dark:text-amber-400" />
               </div>
             )}
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-2 mb-1">
               <p className="text-sm font-semibold leading-snug">{atom.title}</p>
               <Badge
                 variant="secondary"
-                className={`text-[10px] shrink-0 ${categoryColors[atom.category] || ""}`}
+                className={`text-[10px] shrink-0 rounded-full ${categoryColors[atom.category] || ""}`}
               >
                 {categoryLabels[atom.category] || atom.category}
               </Badge>
@@ -116,7 +119,7 @@ function MemoryAtomCard({ atom, members }: { atom: MemoryAtom; members: FamilyMe
 
             {/* Message quote */}
             {atom.sourceType === "message" && meta.content && (
-              <div className="mt-2 pl-3 border-l-2 border-primary/30">
+              <div className="mt-2 pl-3 border-l-2 border-amber-300/50">
                 <p className="text-xs text-muted-foreground line-clamp-2 italic">
                   "{(meta.content as string).substring(0, 120)}..."
                 </p>
@@ -124,7 +127,7 @@ function MemoryAtomCard({ atom, members }: { atom: MemoryAtom; members: FamilyMe
             )}
 
             {/* Footer: members + time */}
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-3">
               {involvedMembers.slice(0, 4).map(m => (
                 <span key={m.id} className="text-xs" title={m.name}>
                   {m.emoji}
@@ -195,18 +198,21 @@ function TimelineTab({ members }: { members: FamilyMember[] }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Search + Filters */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="flex flex-1 gap-2">
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleSearch()}
-            placeholder="Search memories..."
-            className="flex-1"
-            data-testid="input-memory-search"
-          />
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}
+              placeholder="Search your memories..."
+              className="pl-9"
+              data-testid="input-memory-search"
+            />
+          </div>
           <Button size="icon" variant="outline" onClick={handleSearch} data-testid="button-memory-search">
             <Search className="h-4 w-4" />
           </Button>
@@ -239,7 +245,7 @@ function TimelineTab({ members }: { members: FamilyMember[] }) {
         </div>
       </div>
 
-      {/* Atom feed grouped by date */}
+      {/* Atom feed grouped by date — journal entry style */}
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
@@ -247,27 +253,33 @@ function TimelineTab({ members }: { members: FamilyMember[] }) {
       ) : displayAtoms.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <Sparkles className="h-10 w-10 mx-auto mb-4 empty-state-icon" />
-            <h3 className="font-semibold text-lg mb-1">
-              {searchQuery ? "No memories found" : "No memories yet"}
+            <Sparkles className="h-10 w-10 mx-auto mb-4 text-amber-300" />
+            <h3
+              className="font-semibold text-xl mb-2"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              {searchQuery ? "No memories found" : "Your story starts here"}
             </h3>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto">
               {searchQuery
                 ? `No results for "${searchQuery}". Try a different search.`
-                : "Start sharing photos, messages, and moments to see them appear here."}
+                : "Share photos, messages, and moments — they'll become beautiful entries in your family's journal."}
             </p>
           </CardContent>
         </Card>
       ) : (
         <>
           {[...grouped.entries()].map(([dateKey, dateAtoms]) => (
-            <div key={dateKey} className="space-y-2">
-              <div className="flex items-center gap-2 pt-2">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs font-medium text-muted-foreground px-2">
+            <div key={dateKey} className="space-y-3">
+              {/* Date divider — journal style */}
+              <div className="flex items-center gap-3 pt-2">
+                <div className="h-px flex-1 bg-amber-200/50 dark:bg-amber-800/30" />
+                <span
+                  className="text-xs font-medium text-amber-700 dark:text-amber-400 px-3 py-0.5 rounded-full bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/50 dark:border-amber-800/30"
+                >
                   {format(parseISO(dateKey), "EEEE, MMMM d, yyyy")}
                 </span>
-                <div className="h-px flex-1 bg-border" />
+                <div className="h-px flex-1 bg-amber-200/50 dark:bg-amber-800/30" />
               </div>
               {dateAtoms.map(atom => (
                 <MemoryAtomCard key={atom.id} atom={atom} members={members} />
@@ -354,8 +366,13 @@ function CompilationsTab({ members }: { members: FamilyMember[] }) {
         </Button>
 
         {/* Compilation detail view — magazine style */}
-        <div className="text-center space-y-4 pt-4">
-          <h2 className="text-xl font-serif font-bold">{selectedCompilation.title}</h2>
+        <div className="text-center space-y-2 pt-4">
+          <h2
+            className="text-2xl font-bold"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            {selectedCompilation.title}
+          </h2>
           <p className="text-xs text-muted-foreground">
             {format(parseISO(selectedCompilation.periodStart), "MMM d")} — {format(parseISO(selectedCompilation.periodEnd), "MMM d, yyyy")}
           </p>
@@ -363,9 +380,12 @@ function CompilationsTab({ members }: { members: FamilyMember[] }) {
 
         {/* Narrative */}
         {selectedCompilation.narrative && (
-          <Card className="bg-primary/5 border-primary/20">
+          <Card className="bg-amber-50/60 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-800/30">
             <CardContent className="p-6">
-              <p className="text-base leading-relaxed font-serif italic text-foreground">
+              <p
+                className="text-base leading-relaxed italic text-foreground"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "1.1rem" }}
+              >
                 {selectedCompilation.narrative}
               </p>
             </CardContent>
@@ -373,8 +393,8 @@ function CompilationsTab({ members }: { members: FamilyMember[] }) {
         )}
 
         {/* Atoms in this compilation */}
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
             {selectedCompilation.atoms?.length || 0} Moments
           </h3>
           {(selectedCompilation.atoms || []).map(atom => (
@@ -388,7 +408,7 @@ function CompilationsTab({ members }: { members: FamilyMember[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
           Your Compilations
         </h3>
         <Button
@@ -409,10 +429,15 @@ function CompilationsTab({ members }: { members: FamilyMember[] }) {
       ) : !compilations || compilations.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <BookOpen className="h-10 w-10 mx-auto mb-4 empty-state-icon" />
-            <h3 className="font-semibold text-lg mb-1">No compilations yet</h3>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-              Compilations are beautifully narrated summaries of your family's memories.
+            <BookOpen className="h-10 w-10 mx-auto mb-4 text-amber-300" />
+            <h3
+              className="font-semibold text-xl mb-2"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              No compilations yet
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-5">
+              Compilations are beautifully narrated summaries of your family's memories — like a letter from your year.
             </p>
             <Button
               onClick={() => generateMutation.mutate()}
@@ -430,25 +455,33 @@ function CompilationsTab({ members }: { members: FamilyMember[] }) {
             return (
               <Card
                 key={comp.id}
-                className="card-hover cursor-pointer"
+                className="card-hover cursor-pointer border-amber-100/50 dark:border-amber-900/20"
                 onClick={() => setSelectedId(comp.id)}
                 data-testid={`compilation-${comp.id}`}
               >
-                <CardContent className="p-4">
+                <CardContent className="p-5">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-[10px]">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="secondary" className="text-[10px] rounded-full capitalize">
                           {comp.type}
                         </Badge>
-                        <p className="text-sm font-semibold">{comp.title}</p>
                       </div>
+                      <p
+                        className="text-base font-semibold leading-tight"
+                        style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                      >
+                        {comp.title}
+                      </p>
                       <p className="text-xs text-muted-foreground mt-1">
                         {atomCount} {atomCount === 1 ? "moment" : "moments"} &middot;{" "}
                         {format(parseISO(comp.generatedAt), "MMM d, yyyy")}
                       </p>
                       {comp.narrative && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 italic">
+                        <p
+                          className="text-xs text-muted-foreground mt-2 line-clamp-2 italic"
+                          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "0.85rem" }}
+                        >
                           {comp.narrative.substring(0, 120)}...
                         </p>
                       )}
@@ -476,9 +509,14 @@ function OnThisDayTab({ members }: { members: FamilyMember[] }) {
 
   return (
     <div className="space-y-6">
-      <div className="text-center py-4">
-        <Clock className="h-8 w-8 mx-auto text-primary mb-3" />
-        <h2 className="text-lg font-serif font-bold">On This Day — {todayStr}</h2>
+      <div className="text-center py-5">
+        <Clock className="h-8 w-8 mx-auto text-amber-400 mb-3" />
+        <h2
+          className="text-2xl font-bold"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          On This Day — {todayStr}
+        </h2>
         <p className="text-xs text-muted-foreground mt-1">
           What happened on this date in previous years
         </p>
@@ -489,21 +527,33 @@ function OnThisDayTab({ members }: { members: FamilyMember[] }) {
           {[1, 2].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : !atoms || atoms.length === 0 ? (
-        <Card className="bg-primary/5 border-primary/20">
+        <Card className="bg-amber-50/40 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-800/30">
           <CardContent className="py-12 text-center">
-            <p className="text-lg font-serif mb-2">Nothing yet</p>
+            <p
+              className="text-xl mb-2"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              Nothing yet for this day
+            </p>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto">
               Your first memories will appear here next year. Keep creating moments — they'll become beautiful reminders of where you've been.
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {atoms.map(atom => {
             const year = new Date(atom.occurredAt).getFullYear();
             return (
-              <div key={atom.id}>
-                <p className="text-xs font-semibold text-primary mb-1">{year}</p>
+              <div
+                key={atom.id}
+                className="rounded-xl border border-amber-200/40 dark:border-amber-800/20 bg-amber-50/30 dark:bg-amber-950/10 p-1"
+              >
+                <p
+                  className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2 px-3 pt-2"
+                >
+                  {year}
+                </p>
                 <MemoryAtomCard atom={atom} members={members} />
               </div>
             );
@@ -539,9 +589,14 @@ function PersonalLensTab({ members }: { members: FamilyMember[] }) {
 
   return (
     <div className="space-y-6">
-      <div className="text-center py-4">
-        <Users className="h-8 w-8 mx-auto text-primary mb-3" />
-        <h2 className="text-lg font-serif font-bold">Personal Lens</h2>
+      <div className="text-center py-5">
+        <Users className="h-8 w-8 mx-auto text-amber-400 mb-3" />
+        <h2
+          className="text-2xl font-bold"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          Personal Lens
+        </h2>
         <p className="text-xs text-muted-foreground mt-1">
           Explore memories between two family members
         </p>
@@ -578,7 +633,10 @@ function PersonalLensTab({ members }: { members: FamilyMember[] }) {
 
       {bothSelected && (
         <div className="text-center">
-          <p className="text-sm font-semibold">
+          <p
+            className="font-semibold text-base"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
             {nameA?.emoji} {nameA?.name.split(" ")[0]} &amp; {nameB?.emoji} {nameB?.name.split(" ")[0]}
             {atoms && atoms.length > 0
               ? ` — ${atoms.length} ${atoms.length === 1 ? "Memory" : "Memories"} Together`
@@ -592,7 +650,7 @@ function PersonalLensTab({ members }: { members: FamilyMember[] }) {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : bothSelected && (!atoms || atoms.length === 0) ? (
-        <Card className="bg-primary/5 border-primary/20">
+        <Card className="bg-amber-50/40 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-800/30">
           <CardContent className="py-12 text-center">
             <p className="text-sm text-muted-foreground">
               Start creating memories together
@@ -600,7 +658,7 @@ function PersonalLensTab({ members }: { members: FamilyMember[] }) {
           </CardContent>
         </Card>
       ) : bothSelected && atoms ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {atoms.map(atom => (
             <MemoryAtomCard key={atom.id} atom={atom} members={members} />
           ))}
@@ -681,8 +739,11 @@ export default function Memories() {
     <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto page-enter" data-testid="memories-page">
       {/* Hero */}
       <div className="text-center pt-4 pb-2">
-        <Sparkles className="h-8 w-8 mx-auto text-primary mb-3" />
-        <h1 className="text-2xl font-bold tracking-tight font-serif">
+        <Sparkles className="h-8 w-8 mx-auto text-amber-400 mb-3" />
+        <h1
+          className="text-3xl font-bold tracking-tight"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
           Family Memories
         </h1>
         <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
@@ -693,27 +754,30 @@ export default function Memories() {
 
       {/* Stats bar */}
       {stats && stats.totalAtoms > 0 && (
-        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground flex-wrap" data-testid="memory-stats-bar">
-          <span className="font-medium text-foreground">{stats.totalAtoms} memories</span>
-          <span>&middot;</span>
+        <div
+          className="flex items-center justify-center gap-3 text-xs text-muted-foreground flex-wrap py-2 px-4 rounded-full bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-800/20 mx-auto w-fit"
+          data-testid="memory-stats-bar"
+        >
+          <span className="font-semibold text-amber-700 dark:text-amber-400">{stats.totalAtoms} memories</span>
+          <span className="text-amber-300 dark:text-amber-700">&middot;</span>
           <span>{photoCount} photos</span>
-          <span>&middot;</span>
+          <span className="text-amber-300 dark:text-amber-700">&middot;</span>
           <span>{messageCount} messages</span>
-          <span>&middot;</span>
+          <span className="text-amber-300 dark:text-amber-700">&middot;</span>
           <span>Growing since {growingSince}</span>
         </div>
       )}
 
-      {/* Tab navigation */}
-      <div className="flex gap-1 border-b overflow-x-auto pb-px">
+      {/* Tab navigation — warm gold underline style */}
+      <div className="flex gap-1 border-b border-amber-200/40 dark:border-amber-800/30 overflow-x-auto pb-px">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+            className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
               tab === t.key
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "border-amber-500 text-amber-700 dark:text-amber-400"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-amber-300/50"
             }`}
             data-testid={`tab-${t.key}`}
           >
