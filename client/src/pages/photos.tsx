@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo } from "react";
+import { ensureCsrfToken } from "@/lib/queryClient";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,10 +49,14 @@ export default function Photos() {
 
   const uploadPhoto = useMutation({
     mutationFn: async (formData: FormData) => {
+      const token = await ensureCsrfToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["x-csrf-token"] = token;
       const res = await fetch("/api/photos/upload", {
         method: "POST",
         body: formData,
         credentials: "include",
+        headers,
       });
       if (!res.ok) {
         const err = await res.text();

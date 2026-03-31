@@ -22,7 +22,7 @@ function getCsrfTokenFromCookie(): string | null {
 
 let csrfToken: string | null = null;
 
-async function ensureCsrfToken(): Promise<string | null> {
+export async function ensureCsrfToken(): Promise<string | null> {
   if (csrfToken) return csrfToken;
   try {
     const res = await fetch(`${API_BASE}/api/csrf-token`, {
