@@ -191,6 +191,8 @@ const csrfExcludedPaths = [
   "/api/auth/reset-password",
   "/api/chat/webhook",
   "/api/billing/webhook",
+  "/api/photos/upload",
+  "/api/vault",
 ];
 
 const {
