@@ -66,7 +66,8 @@ declare global {
 }
 
 // Ensure uploads directory exists
-const uploadsDir = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+const dataDir = process.env.DATA_DIR || process.cwd();
+const uploadsDir = process.env.UPLOAD_DIR || path.join(dataDir, "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -971,7 +972,17 @@ export async function registerRoutes(
       if (!req.file) {
         return res.status(400).json({ message: "No image file provided" });
       }
-      const fileUrl = `/uploads/${req.file.filename}`;
+      let fileUrl: string;
+      if (isS3Configured()) {
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const ext = path.extname(req.file.originalname) || '.jpg';
+        const key = `photos/${req.user!.familyId}/${Date.now()}-${crypto.randomUUID()}${ext}`;
+        const s3Url = await uploadFile(key, fileBuffer, req.file.mimetype);
+        fs.unlinkSync(req.file.path);
+        fileUrl = s3Url;
+      } else {
+        fileUrl = `/uploads/${req.file.filename}`;
+      }
       const parsed = insertPhotoSchema.parse({
         familyId: req.user!.familyId,
         uploadedById: Number(req.body.uploadedById),

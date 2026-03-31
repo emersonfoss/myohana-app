@@ -41,7 +41,8 @@ function getS3Client(): S3Client {
 
 // ─── Local File Storage Fallback ───────────────────────────────────
 
-const VAULT_UPLOADS_DIR = process.env.VAULT_UPLOAD_DIR || path.join(process.cwd(), "vault-uploads");
+const DATA_DIR = process.env.DATA_DIR || process.cwd();
+const VAULT_UPLOADS_DIR = process.env.VAULT_UPLOAD_DIR || path.join(DATA_DIR, "vault-uploads");
 
 function ensureLocalDir(familyId: number): string {
   const dir = path.join(VAULT_UPLOADS_DIR, String(familyId));
