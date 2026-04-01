@@ -206,6 +206,18 @@ export const llmMessages = sqliteTable("llm_messages", {
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
 });
 
+export const scheduledJobs = sqliteTable("scheduled_jobs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  jobType: text("job_type").notNull(), // weekly_compilation, monthly_compilation, birthday_compilation, memory_suggestions, on_this_day
+  status: text("status").notNull().default("pending"), // pending, running, completed, failed
+  scheduledFor: text("scheduled_for").notNull(),
+  startedAt: text("started_at"),
+  completedAt: text("completed_at"),
+  result: text("result"), // JSON: { compilationId, error, memberId, etc. }
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const googleOauthTokens = sqliteTable("google_oauth_tokens", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().unique(),
@@ -215,6 +227,21 @@ export const googleOauthTokens = sqliteTable("google_oauth_tokens", {
   expiresAt: text("expires_at").notNull(),
   scope: text("scope").notNull(),
   tokenType: text("token_type").notNull().default("Bearer"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const groupmeConnections = sqliteTable("groupme_connections", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull().unique(),
+  accessToken: text("access_token").notNull(),
+  groupId: text("group_id").notNull(),
+  groupName: text("group_name").notNull(),
+  botId: text("bot_id").notNull(),
+  botName: text("bot_name").notNull().default("MyOhana"),
+  syncEnabled: integer("sync_enabled", { mode: "boolean" }).notNull().default(true),
+  lastMessageId: text("last_message_id"),
+  lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
@@ -238,7 +265,9 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
 export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({ id: true, createdAt: true });
 export const insertLLMConversationSchema = createInsertSchema(llmConversations).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertLLMMessageSchema = createInsertSchema(llmMessages).omit({ id: true, createdAt: true });
+export const insertScheduledJobSchema = createInsertSchema(scheduledJobs).omit({ id: true, createdAt: true });
 export const insertGoogleOauthTokenSchema = createInsertSchema(googleOauthTokens).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertGroupmeConnectionSchema = createInsertSchema(groupmeConnections).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Insert types
 export type InsertFamily = z.infer<typeof insertFamilySchema>;
@@ -259,7 +288,9 @@ export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
 export type InsertLLMConversation = z.infer<typeof insertLLMConversationSchema>;
 export type InsertLLMMessage = z.infer<typeof insertLLMMessageSchema>;
+export type InsertScheduledJob = z.infer<typeof insertScheduledJobSchema>;
 export type InsertGoogleOauthToken = z.infer<typeof insertGoogleOauthTokenSchema>;
+export type InsertGroupmeConnection = z.infer<typeof insertGroupmeConnectionSchema>;
 
 // Select types
 export type Family = typeof families.$inferSelect;
@@ -280,4 +311,6 @@ export type Subscription = typeof subscriptions.$inferSelect;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type LLMConversation = typeof llmConversations.$inferSelect;
 export type LLMMessage = typeof llmMessages.$inferSelect;
+export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 export type GoogleOauthToken = typeof googleOauthTokens.$inferSelect;
+export type GroupmeConnection = typeof groupmeConnections.$inferSelect;

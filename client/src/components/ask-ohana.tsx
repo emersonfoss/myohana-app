@@ -8,7 +8,14 @@ interface OhanaMessage {
   id: string;
   role: "user" | "ohana";
   content: string;
+  intent?: string;
 }
+
+const INTENT_ACTIONS: Record<string, { label: string; url: string }> = {
+  import_photos: { label: "Open Photos \u2192", url: "/#/photos" },
+  generate_compilation: { label: "Open Memories \u2192", url: "/#/memories" },
+  search_memories: { label: "Browse Memories \u2192", url: "/#/memories" },
+};
 
 const SUGGESTED_PROMPTS = [
   "What did we do last weekend?",
@@ -81,6 +88,32 @@ export function AskOhana() {
     }
   }, [conversationId]);
 
+  // Restore conversation history on mount
+  useEffect(() => {
+    if (!conversationId) return;
+    fetch(`/api/ohana/conversations/${conversationId}`, { credentials: "include" })
+      .then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.json();
+      })
+      .then((data) => {
+        if (data.messages && data.messages.length > 0) {
+          const restored: OhanaMessage[] = data.messages.map((m: any, i: number) => ({
+            id: `restored-${i}`,
+            role: m.role === "assistant" ? "ohana" : "user",
+            content: m.content,
+          }));
+          setMessages(restored);
+        }
+      })
+      .catch(() => {
+        // Conversation not found — clear stale ID
+        sessionStorage.removeItem("ohana-conversation-id");
+        setConversationId(null);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Auto-scroll to bottom on new messages or when loading
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -141,6 +174,7 @@ export function AskOhana() {
           id: `ohana-${Date.now()}`,
           role: "ohana",
           content: data.response || data.message || "I'm not sure how to respond to that.",
+          intent: data.intent,
         };
         setMessages((prev) => [...prev, ohanaMsg]);
       } catch (err: any) {
@@ -270,7 +304,7 @@ export function AskOhana() {
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
                     style={{ animation: "askOhanaFadeIn 0.2s ease-out" }}
                   >
                     <div
@@ -287,6 +321,14 @@ export function AskOhana() {
                     >
                       {msg.content}
                     </div>
+                    {msg.role === "ohana" && msg.intent && INTENT_ACTIONS[msg.intent] && (
+                      <a
+                        href={INTENT_ACTIONS[msg.intent].url}
+                        className="mt-1.5 text-xs px-3 py-1 rounded-full border border-amber-200/60 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 transition-colors inline-block"
+                      >
+                        {INTENT_ACTIONS[msg.intent].label}
+                      </a>
+                    )}
                   </div>
                 ))}
                 {isLoading && <TypingIndicator />}

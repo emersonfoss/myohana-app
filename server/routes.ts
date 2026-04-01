@@ -16,7 +16,7 @@ import rateLimit from "express-rate-limit";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage, db, sqlite } from "./storage";
 import { seedDatabase } from "./seed";
-import { memoryEngine } from "./memory-engine";
+import { memoryEngine, generateLLMNarrative } from "./memory-engine";
 import { stripe, isStripeConfigured, STRIPE_PRICES, STRIPE_WEBHOOK_SECRET } from "./stripe";
 import { sanitizeInputMiddleware } from "./sanitize";
 import { sendEmail } from "./email";
@@ -25,6 +25,7 @@ import { logger } from "./logger";
 import * as llm from "./llm";
 import { isGoogleConfigured, getGoogleAuthUrl, exchangeGoogleCode, isGoogleConnected, disconnectGoogle } from "./google-auth";
 import { createPickerSession, pollPickerSession, importAllPickerItems } from "./google-photos";
+import { isGroupMeConfigured, listGroups, registerBot, destroyBot, fetchMessages, normalizeGroupMeMessage } from "./groupme";
 import { buildFamilyContext } from "./family-context";
 import {
   families,
@@ -186,6 +187,15 @@ const generalApiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const ohanaAskLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,
+  message: { message: "You're chatting too fast! Give Ohana a moment to catch up. Try again in a few minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.user as any)?.id?.toString() || req.ip || "unknown",
+});
+
 // ─── CSRF Protection ───────────────────────────────────────────────
 const csrfExcludedPaths = [
   "/api/auth/login",
@@ -199,6 +209,7 @@ const csrfExcludedPaths = [
   "/api/vault",
   "/api/ohana/ask",
   "/api/auth/google/callback",
+  "/api/chat/groupme-webhook",
 ];
 
 const {
@@ -1181,7 +1192,20 @@ export async function registerRoutes(
       if (!family) return res.status(404).json({ message: "No family found" });
       const date = (req.query.date as string) || new Date().toISOString();
       const atoms = await memoryEngine.getOnThisDay(family.id, date);
-      res.json(atoms);
+
+      // If LLM is configured, generate a warm narrative for on-this-day memories
+      let narrative: string | null = null;
+      if (atoms.length > 0 && llm.isLLMConfigured()) {
+        try {
+          narrative = await generateLLMNarrative(
+            family.id, req.user!.id, "on_this_day", atoms,
+          );
+        } catch {
+          // LLM failed — return atoms without narrative
+        }
+      }
+
+      res.json({ atoms, narrative });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch on-this-day memories" });
     }
@@ -1235,6 +1259,41 @@ export async function registerRoutes(
         const d = new Date(startDate);
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         compilation = await memoryEngine.generateMonthlyCompilation(family.id, monthNames[d.getMonth()], d.getFullYear());
+      } else if (type === "birthday" || type === "personal_lens" || type === "legacy" || type === "personal") {
+        // Birthday / Personal Lens compilation
+        const compilationType = (type === "legacy" || type === "personal") ? "personal_lens" : type;
+        const atoms = await storage.getMemoryAtomsByDateRange(family.id, startDate, endDate);
+        const members = await storage.getFamilyMembers(family.id);
+        const subjectMember = perspectiveMemberId ? members.find(m => m.id === perspectiveMemberId) : undefined;
+
+        let narrative: string;
+        if (llm.isLLMConfigured()) {
+          try {
+            narrative = await generateLLMNarrative(
+              family.id, req.user!.id, compilationType as any, atoms,
+              { subjectName: subjectMember?.name || req.body.subjectName },
+            );
+          } catch {
+            narrative = memoryEngine.generateNarrative(atoms, family, members, compilationType);
+          }
+        } else {
+          narrative = memoryEngine.generateNarrative(atoms, family, members, compilationType);
+        }
+
+        compilation = await storage.createMemoryCompilation({
+          familyId: family.id,
+          type: compilationType,
+          title: compilationType === "birthday"
+            ? `${subjectMember?.name || "Birthday"} Compilation`
+            : `Personal Lens — ${subjectMember?.name || "Family"}`,
+          narrative,
+          coverAtomId: atoms.find(a => a.sourceType === "photo")?.id || null,
+          atomIds: JSON.stringify(atoms.map(a => a.id)),
+          perspectiveMemberId: perspectiveMemberId || null,
+          periodStart: startDate,
+          periodEnd: endDate,
+          generatedAt: new Date().toISOString(),
+        });
       } else {
         // Custom compilation
         const atoms = await storage.getMemoryAtomsByDateRange(family.id, startDate, endDate);
@@ -2284,7 +2343,7 @@ export async function registerRoutes(
   // ─── Ask Ohana — LLM Conversation Endpoints ─────────────────────
 
   // POST /api/ohana/ask — send a message, get AI response
-  app.post("/api/ohana/ask", async (req, res) => {
+  app.post("/api/ohana/ask", ohanaAskLimiter, async (req, res) => {
     try {
       const { message, conversationId } = req.body;
       const { familyId, id: userId } = req.user!;
@@ -2371,6 +2430,20 @@ export async function registerRoutes(
       res.json(conversations);
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Failed to fetch conversations" });
+    }
+  });
+
+  // GET /api/ohana/conversations/:id — get a conversation with messages
+  app.get("/api/ohana/conversations/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const conv = await storage.getConversation(id);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.familyId !== req.user!.familyId) return res.status(403).json({ error: "Not authorized" });
+      const msgs = await storage.getConversationMessages(id);
+      res.json({ ...conv, messages: msgs });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch conversation" });
     }
   });
 
@@ -2502,6 +2575,404 @@ export async function registerRoutes(
       logger.error("Google Photos import error", err);
       res.status(500).json({ error: err.message || "Failed to import photos" });
     }
+  });
+
+  // ─── Smart Memory Curation (Sprint D5) ─────────────────────────────
+
+  // POST /api/ohana/search — LLM-powered semantic memory search
+  app.post("/api/ohana/search", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      const { query } = req.body;
+      if (!query || typeof query !== "string") {
+        return res.status(400).json({ error: "query is required" });
+      }
+
+      const { familyId, id: userId } = req.user;
+
+      // Get recent memory atoms (last 365 days, limit 500)
+      const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+      const allAtoms = await storage.getMemoryAtoms(familyId, { limit: 500 });
+      const atoms = allAtoms.filter(a => a.createdAt >= oneYearAgo);
+
+      if (atoms.length === 0) {
+        return res.json({
+          narrative: `I searched through the family memories for "${query}" but didn't find any yet. Start capturing moments and I'll help you find them!`,
+          atoms: [],
+          query,
+        });
+      }
+
+      // If LLM is configured, do semantic search
+      if (llm.isLLMConfigured()) {
+        const context = await buildFamilyContext(familyId, userId);
+
+        const atomSummaries = atoms.map((a, i) =>
+          `[${i}] ${a.title}${a.description ? " — " + a.description : ""} (${a.category}, ${new Date(a.occurredAt).toLocaleDateString()})`
+        ).join("\n");
+
+        const searchResponse = await llm.complete({
+          system: context.systemPrompt,
+          messages: [{
+            role: "user",
+            content: `The user is searching their family memories with this query: "${query}"
+
+Here are the family's memory atoms:
+${atomSummaries}
+
+Return a JSON object with:
+1. "matchingIndices": array of indices (numbers) of memories that match the query semantically
+2. "explanation": a warm 1-2 sentence explanation of what you found
+
+Return JSON only, no markdown.`,
+          }],
+          maxTokens: 500,
+          temperature: 0.2,
+        });
+
+        try {
+          const parsed = JSON.parse(searchResponse.content);
+          const matchingAtoms = (parsed.matchingIndices || [])
+            .filter((i: number) => i >= 0 && i < atoms.length)
+            .map((i: number) => atoms[i]);
+
+          return res.json({
+            narrative: parsed.explanation || `Found ${matchingAtoms.length} matching memories.`,
+            atoms: matchingAtoms,
+            query,
+          });
+        } catch {
+          // LLM response wasn't valid JSON — fall back to text search
+        }
+      }
+
+      // Fallback: simple text search
+      const q = query.toLowerCase();
+      const matchingAtoms = atoms.filter(a =>
+        a.title.toLowerCase().includes(q) ||
+        (a.description && a.description.toLowerCase().includes(q))
+      );
+
+      res.json({
+        narrative: matchingAtoms.length > 0
+          ? `Found ${matchingAtoms.length} memories matching "${query}".`
+          : `No memories found matching "${query}". Try a different search term.`,
+        atoms: matchingAtoms,
+        query,
+      });
+    } catch (error: any) {
+      logger.error({ err: error }, "Semantic search error");
+      res.status(500).json({ error: error.message || "Search failed" });
+    }
+  });
+
+  // GET /api/ohana/suggestions — smart suggestions for the family
+  app.get("/api/ohana/suggestions", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      const { familyId } = req.user;
+
+      const suggestions: Array<{ type: string; message: string; actionUrl?: string; metadata?: any }> = [];
+
+      // 1. Check for untagged photos (photos without captions)
+      const allPhotos = await storage.getPhotos(familyId);
+      const uncaptioned = allPhotos.filter(p => !p.caption);
+      if (uncaptioned.length > 5) {
+        suggestions.push({
+          type: "untagged_photos",
+          message: `You have ${uncaptioned.length} photos without captions. Adding captions helps MyOhana build richer memory stories.`,
+          actionUrl: "/photos",
+        });
+      }
+
+      // 2. Check upcoming birthdays from family members
+      const members = await storage.getFamilyMembers(familyId);
+      const now = new Date();
+      for (const member of members) {
+        if (!member.dateOfBirth) continue;
+        const dob = new Date(member.dateOfBirth);
+        const birthday = new Date(now.getFullYear(), dob.getMonth(), dob.getDate());
+        if (birthday < now) birthday.setFullYear(now.getFullYear() + 1);
+        const daysUntil = Math.ceil((birthday.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysUntil > 0 && daysUntil <= 21) {
+          suggestions.push({
+            type: "upcoming_birthday",
+            message: `${member.name}'s birthday is in ${daysUntil} day${daysUntil === 1 ? "" : "s"}! Want me to build a birthday compilation?`,
+            actionUrl: "/memories",
+            metadata: { memberId: member.id, memberName: member.name, daysUntil },
+          });
+        }
+      }
+
+      // 3. Check for "on this day" content from past years
+      const todayStr = now.toISOString().split("T")[0];
+      const onThisDayAtoms = await memoryEngine.getOnThisDay(familyId, todayStr);
+      if (onThisDayAtoms.length > 0) {
+        const yearAgo = new Date(onThisDayAtoms[0].occurredAt).getFullYear();
+        suggestions.push({
+          type: "on_this_day",
+          message: `On this day in ${yearAgo}: "${onThisDayAtoms[0].title}". I found ${onThisDayAtoms.length} memor${onThisDayAtoms.length === 1 ? "y" : "ies"} from this date.`,
+          actionUrl: "/memories",
+          metadata: { atomCount: onThisDayAtoms.length },
+        });
+      }
+
+      // 4. Content volume milestones
+      const stats = await storage.getStats(familyId);
+      const totalContent = stats.messageCount + stats.photoCount + stats.eventCount;
+      const milestones = [500, 250, 100, 50];
+      for (const milestone of milestones) {
+        if (totalContent >= milestone) {
+          suggestions.push({
+            type: "milestone",
+            message: `You've captured over ${milestone} family moments! Your family story is growing beautifully.`,
+            actionUrl: "/memories",
+            metadata: { total: totalContent },
+          });
+          break; // Only show highest milestone
+        }
+      }
+
+      // 5. Check for quiet periods (no memories in 7+ days)
+      const allAtoms = await storage.getMemoryAtoms(familyId, { limit: 1 });
+      if (allAtoms.length > 0) {
+        const lastAtomDate = new Date(allAtoms[0].createdAt);
+        const daysSinceLastMemory = Math.floor((now.getTime() - lastAtomDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSinceLastMemory >= 7) {
+          suggestions.push({
+            type: "quiet_period",
+            message: `It's been ${daysSinceLastMemory} days since your last family moment was captured. What's been happening?`,
+            actionUrl: "/messages",
+          });
+        }
+      }
+
+      res.json({ suggestions });
+    } catch (error: any) {
+      logger.error({ err: error }, "Suggestions error");
+      res.status(500).json({ error: error.message || "Failed to generate suggestions" });
+    }
+  });
+
+  // ─── GroupMe Chat Bridge (Sprint D3) ────────────────────────────────
+
+  // GroupMe webhook — receives messages from GroupMe bot callback (no auth, no CSRF)
+  app.post("/api/chat/groupme-webhook", express.json(), async (req, res) => {
+    try {
+      const { group_id, name, text, id, attachments, system, sender_type } = req.body;
+
+      // Ignore bot messages to prevent loops
+      if (sender_type === "bot") return res.status(200).send("OK");
+
+      if (!group_id) return res.status(400).send("Missing group_id");
+
+      const conn = await storage.getGroupmeConnectionByGroupId(group_id);
+      if (!conn || !conn.syncEnabled) return res.status(200).send("OK");
+
+      const normalized = normalizeGroupMeMessage(
+        {
+          id: id || "",
+          source_guid: "",
+          created_at: Math.floor(Date.now() / 1000),
+          user_id: "",
+          group_id,
+          name: name || "Unknown",
+          text: text || null,
+          system: system || false,
+          favorited_by: [],
+          attachments: (attachments || []).map((a: any) => ({
+            type: a.type,
+            url: a.url,
+          })),
+        },
+        conn.familyId,
+      );
+
+      if (!normalized) return res.status(200).send("OK");
+
+      const msg = await storage.createChatMessage(normalized);
+
+      // Broadcast to WebSocket clients
+      broadcast({ type: "chat", senderName: msg.senderName, content: msg.content }, conn.familyId);
+
+      // Ingest as memory atom (fire-and-forget)
+      const members = await storage.getFamilyMembers(conn.familyId);
+      memoryEngine.ingestChat(msg, members).catch(() => {});
+
+      res.status(200).send("OK");
+    } catch (err: any) {
+      logger.error("GroupMe webhook error", err);
+      res.status(200).send("OK"); // Always 200 to avoid GroupMe retries
+    }
+  });
+
+  // GroupMe status
+  app.get("/api/groupme/status", async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    if (!isGroupMeConfigured()) {
+      return res.status(503).json({ error: "GroupMe integration not configured" });
+    }
+    const conn = await storage.getGroupmeConnection(req.user.familyId);
+    res.json({
+      connected: !!conn,
+      groupName: conn?.groupName || null,
+      syncEnabled: conn?.syncEnabled ?? false,
+      lastSyncedAt: conn?.lastSyncedAt || null,
+    });
+  });
+
+  // List GroupMe groups
+  app.get("/api/groupme/groups", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      if (!isGroupMeConfigured()) {
+        return res.status(503).json({ error: "GroupMe integration not configured" });
+      }
+      const accessToken = (req.query.token as string) || process.env.GROUPME_ACCESS_TOKEN;
+      if (!accessToken) return res.status(400).json({ error: "Access token required" });
+      const groups = await listGroups(accessToken);
+      res.json({ groups });
+    } catch (err: any) {
+      logger.error("GroupMe list groups error", err);
+      res.status(500).json({ error: err.message || "Failed to list groups" });
+    }
+  });
+
+  // Connect GroupMe group
+  app.post("/api/groupme/connect", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      if (!isGroupMeConfigured()) {
+        return res.status(503).json({ error: "GroupMe integration not configured" });
+      }
+
+      const { groupId, groupName, accessToken } = req.body;
+      if (!groupId || !groupName) {
+        return res.status(400).json({ error: "groupId and groupName are required" });
+      }
+
+      const token = accessToken || process.env.GROUPME_ACCESS_TOKEN;
+      if (!token) return res.status(400).json({ error: "Access token required" });
+
+      // Build callback URL
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      const callbackUrl = `${baseUrl}/api/chat/groupme-webhook`;
+
+      const botId = await registerBot(token, groupId, "MyOhana", callbackUrl);
+
+      const conn = await storage.saveGroupmeConnection({
+        familyId: req.user.familyId,
+        accessToken: token,
+        groupId,
+        groupName,
+        botId,
+        botName: "MyOhana",
+        syncEnabled: true,
+      });
+
+      res.json({ connected: true, groupName: conn.groupName });
+    } catch (err: any) {
+      logger.error("GroupMe connect error", err);
+      res.status(500).json({ error: err.message || "Failed to connect GroupMe" });
+    }
+  });
+
+  // Disconnect GroupMe
+  app.delete("/api/groupme/disconnect", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+
+      const conn = await storage.getGroupmeConnection(req.user.familyId);
+      if (conn) {
+        // Try to destroy the bot (best effort)
+        try {
+          await destroyBot(conn.accessToken, conn.botId);
+        } catch {}
+        await storage.deleteGroupmeConnection(req.user.familyId);
+      }
+
+      res.json({ message: "GroupMe disconnected" });
+    } catch (err: any) {
+      logger.error("GroupMe disconnect error", err);
+      res.status(500).json({ error: err.message || "Failed to disconnect GroupMe" });
+    }
+  });
+
+  // Backfill GroupMe messages
+  app.post("/api/groupme/backfill", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+
+      const conn = await storage.getGroupmeConnection(req.user.familyId);
+      if (!conn) return res.status(404).json({ error: "GroupMe not connected" });
+
+      const maxPages = Math.min(Number(req.body.pages) || 5, 20);
+      let imported = 0;
+      let skipped = 0;
+      let errors = 0;
+      let beforeId: string | undefined;
+      let lastImportedId: string | undefined;
+
+      const members = await storage.getFamilyMembers(req.user.familyId);
+
+      for (let page = 0; page < maxPages; page++) {
+        const result = await fetchMessages(conn.accessToken, conn.groupId, beforeId);
+        if (!result.messages || result.messages.length === 0) break;
+
+        for (const gMsg of result.messages) {
+          const normalized = normalizeGroupMeMessage(gMsg, conn.familyId);
+          if (!normalized) {
+            skipped++;
+            continue;
+          }
+
+          // Skip if we already have this message
+          const existing = await storage.getChatMessages(conn.familyId, 1).then(
+            (msgs) => msgs.find((m) => m.externalId === gMsg.id),
+          );
+          if (existing) {
+            skipped++;
+            continue;
+          }
+
+          try {
+            const msg = await storage.createChatMessage(normalized);
+            memoryEngine.ingestChat(msg, members).catch(() => {});
+            imported++;
+            if (!lastImportedId) lastImportedId = gMsg.id;
+          } catch {
+            errors++;
+          }
+        }
+
+        beforeId = result.messages[result.messages.length - 1]?.id;
+      }
+
+      // Update last sync marker
+      if (lastImportedId) {
+        await storage.updateGroupmeLastSync(conn.familyId, lastImportedId);
+      }
+
+      res.json({ imported, skipped, errors });
+    } catch (err: any) {
+      logger.error("GroupMe backfill error", err);
+      res.status(500).json({ error: err.message || "Failed to backfill messages" });
+    }
+  });
+
+  // ─── Multer Error Handler ─────────────────────────────────────────
+  // Must be registered after all routes that use multer
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ message: "File too large. Maximum size is 50MB." });
+      }
+      return res.status(400).json({ message: err.message });
+    }
+    if (err && err.message && err.message.includes("Only image files")) {
+      return res.status(400).json({ message: err.message });
+    }
+    next(err);
   });
 
   return { httpServer, wss };

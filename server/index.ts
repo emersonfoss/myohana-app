@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { logger } from "./logger";
+import { startScheduler } from "./scheduler";
 
 const app = express();
 app.set('trust proxy', 1);
@@ -103,6 +104,11 @@ process.on("uncaughtException", (err) => {
     },
     () => {
       logger.info(`MyOhana server listening on port ${port}`);
+
+      // Start the scheduled job runner (non-blocking — failure doesn't crash the server)
+      startScheduler().catch((err) => {
+        logger.error({ err }, "Scheduler failed to start");
+      });
     },
   );
 

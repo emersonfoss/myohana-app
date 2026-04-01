@@ -26,7 +26,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink, Download, Settings as SettingsIcon, Link2, Unlink } from "lucide-react";
+import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink, Download, Settings as SettingsIcon, Link2, Unlink, MessageCircle, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -160,6 +160,203 @@ function GooglePhotosSection() {
               <Link2 className="h-4 w-4 mr-1.5" />
               Connect
             </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function GroupMeSection() {
+  const { toast } = useToast();
+  const [accessToken, setAccessToken] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState<{ id: string; name: string } | null>(null);
+
+  const { data: groupmeStatus, isLoading, isError } = useQuery<{
+    connected: boolean;
+    groupName: string | null;
+    syncEnabled: boolean;
+    lastSyncedAt: string | null;
+  }>({
+    queryKey: ["/api/groupme/status"],
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const { data: groupsData, refetch: fetchGroups, isFetching: loadingGroups } = useQuery<{
+    groups: { id: string; name: string; member_count: number }[];
+  }>({
+    queryKey: ["/api/groupme/groups"],
+    enabled: false,
+    retry: false,
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedGroup) throw new Error("Select a group");
+      const res = await apiRequest("POST", "/api/groupme/connect", {
+        groupId: selectedGroup.id,
+        groupName: selectedGroup.name,
+        accessToken: accessToken || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groupme/status"] });
+      setSelectedGroup(null);
+      setAccessToken("");
+      toast({ title: "Connected", description: "GroupMe group has been connected." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/groupme/disconnect");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groupme/status"] });
+      toast({ title: "Disconnected", description: "GroupMe has been disconnected." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const backfillMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/groupme/backfill", { pages: 5 });
+      return res.json();
+    },
+    onSuccess: (data: { imported: number; skipped: number; errors: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groupme/status"] });
+      toast({
+        title: "Backfill Complete",
+        description: `Imported ${data.imported} messages, skipped ${data.skipped}, errors ${data.errors}.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Hide section entirely when not configured (503)
+  if (isError) return null;
+
+  return (
+    <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none">
+      <CardHeader className="flex flex-row items-center gap-3">
+        <MessageCircle className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+        <CardTitle
+          className="text-lg"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          GroupMe Chat Bridge
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : groupmeStatus?.connected ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between py-1">
+              <div className="flex items-center gap-3">
+                <MessageCircle className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="text-sm font-medium">{groupmeStatus.groupName}</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-green-500 inline-block" />
+                    <span className="text-xs text-muted-foreground">
+                      Connected{groupmeStatus.lastSyncedAt ? ` \u00b7 Last synced ${format(new Date(groupmeStatus.lastSyncedAt), "MMM d, h:mm a")}` : ""}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => backfillMutation.mutate()}
+                  disabled={backfillMutation.isPending}
+                  className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-1.5 ${backfillMutation.isPending ? "animate-spin" : ""}`} />
+                  {backfillMutation.isPending ? "Importing..." : "Backfill"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => disconnectMutation.mutate()}
+                  disabled={disconnectMutation.isPending}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <Unlink className="h-4 w-4 mr-1.5" />
+                  {disconnectMutation.isPending ? "..." : "Disconnect"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="groupme-token" className="text-sm">Access Token</Label>
+              <Input
+                id="groupme-token"
+                type="password"
+                placeholder="Paste your GroupMe access token"
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Get your token from dev.groupme.com
+              </p>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchGroups()}
+              disabled={loadingGroups}
+              className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+            >
+              {loadingGroups ? "Loading..." : "Load Groups"}
+            </Button>
+
+            {groupsData?.groups && groupsData.groups.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm">Select Group</Label>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {groupsData.groups.map((g) => (
+                    <button
+                      key={g.id}
+                      onClick={() => setSelectedGroup(g)}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                        selectedGroup?.id === g.id
+                          ? "bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700"
+                          : "hover:bg-muted border border-transparent"
+                      }`}
+                    >
+                      <span className="font-medium">{g.name}</span>
+                      <span className="text-xs text-muted-foreground ml-2">({g.member_count} members)</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedGroup && (
+              <Button
+                onClick={() => connectMutation.mutate()}
+                disabled={connectMutation.isPending}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                <Link2 className="h-4 w-4 mr-1.5" />
+                {connectMutation.isPending ? "Connecting..." : `Connect "${selectedGroup.name}"`}
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
@@ -554,6 +751,7 @@ export default function Settings() {
 
       {/* Connected Accounts Section */}
       <GooglePhotosSection />
+      <GroupMeSection />
 
       {/* Account Section */}
       <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid="account-card">

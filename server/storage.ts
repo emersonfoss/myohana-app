@@ -17,7 +17,9 @@ import {
   type PasswordResetToken, type InsertPasswordResetToken, passwordResetTokens,
   type LLMConversation, type InsertLLMConversation, llmConversations,
   type LLMMessage, type InsertLLMMessage, llmMessages,
+  type ScheduledJob, type InsertScheduledJob, scheduledJobs,
   type GoogleOauthToken, type InsertGoogleOauthToken, googleOauthTokens,
+  type GroupmeConnection, type InsertGroupmeConnection, groupmeConnections,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -267,6 +269,39 @@ sqlite.exec(`
   );
 `);
 
+// Create groupme_connections table (Sprint D3)
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS groupme_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL UNIQUE,
+    access_token TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    bot_name TEXT NOT NULL DEFAULT 'MyOhana',
+    sync_enabled INTEGER NOT NULL DEFAULT 1,
+    last_message_id TEXT,
+    last_synced_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+// Create scheduled_jobs table (Sprint D5)
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS scheduled_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    scheduled_for TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    result TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 export interface IStorage {
   // Family
   getFamily(): Promise<Family | undefined>;
@@ -380,10 +415,24 @@ export interface IStorage {
   addMessage(data: InsertLLMMessage): Promise<LLMMessage>;
   getConversationMessages(conversationId: number, limit?: number): Promise<LLMMessage[]>;
 
+  // Scheduled Jobs
+  createScheduledJob(job: InsertScheduledJob): Promise<ScheduledJob>;
+  getPendingJobs(beforeDate: string): Promise<ScheduledJob[]>;
+  getPendingJobsByType(familyId: number, jobType: string): Promise<ScheduledJob[]>;
+  updateJobStatus(id: number, status: string, result?: string): Promise<void>;
+  resetStaleRunningJobs(): Promise<void>;
+
   // Google OAuth Tokens
   saveGoogleToken(token: InsertGoogleOauthToken): Promise<GoogleOauthToken>;
   getGoogleToken(userId: number): Promise<GoogleOauthToken | undefined>;
   deleteGoogleToken(userId: number): Promise<void>;
+
+  // GroupMe Connections
+  saveGroupmeConnection(conn: InsertGroupmeConnection): Promise<GroupmeConnection>;
+  getGroupmeConnection(familyId: number): Promise<GroupmeConnection | undefined>;
+  deleteGroupmeConnection(familyId: number): Promise<void>;
+  getGroupmeConnectionByGroupId(groupId: string): Promise<GroupmeConnection | undefined>;
+  updateGroupmeLastSync(familyId: number, lastMessageId: string): Promise<void>;
 
   // Cascade delete
   deleteFamilyData(familyId: number): Promise<void>;
@@ -789,6 +838,46 @@ export class DatabaseStorage implements IStorage {
       .reverse();
   }
 
+  // Scheduled Jobs
+  async createScheduledJob(job: InsertScheduledJob): Promise<ScheduledJob> {
+    return db.insert(scheduledJobs).values(job).returning().get();
+  }
+
+  async getPendingJobs(beforeDate: string): Promise<ScheduledJob[]> {
+    return db.select().from(scheduledJobs)
+      .where(and(eq(scheduledJobs.status, "pending"), lte(scheduledJobs.scheduledFor, beforeDate)))
+      .all();
+  }
+
+  async getPendingJobsByType(familyId: number, jobType: string): Promise<ScheduledJob[]> {
+    return db.select().from(scheduledJobs)
+      .where(and(
+        eq(scheduledJobs.familyId, familyId),
+        eq(scheduledJobs.jobType, jobType),
+        eq(scheduledJobs.status, "pending"),
+      ))
+      .all();
+  }
+
+  async updateJobStatus(id: number, status: string, result?: string): Promise<void> {
+    const updates: Record<string, string> = { status };
+    if (status === "running") updates.startedAt = new Date().toISOString();
+    if (status === "completed" || status === "failed") updates.completedAt = new Date().toISOString();
+    if (result) updates.result = result;
+    db.update(scheduledJobs).set(updates).where(eq(scheduledJobs.id, id)).run();
+  }
+
+  async resetStaleRunningJobs(): Promise<void> {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    db.update(scheduledJobs)
+      .set({ status: "pending", startedAt: null })
+      .where(and(
+        eq(scheduledJobs.status, "running"),
+        lte(scheduledJobs.startedAt, tenMinutesAgo),
+      ))
+      .run();
+  }
+
   // Google OAuth Tokens
   async saveGoogleToken(token: InsertGoogleOauthToken): Promise<GoogleOauthToken> {
     // Upsert — replace existing token for the same user
@@ -809,6 +898,38 @@ export class DatabaseStorage implements IStorage {
 
   async deleteGoogleToken(userId: number): Promise<void> {
     db.delete(googleOauthTokens).where(eq(googleOauthTokens.userId, userId)).run();
+  }
+
+  // GroupMe Connections
+  async saveGroupmeConnection(conn: InsertGroupmeConnection): Promise<GroupmeConnection> {
+    const existing = db.select().from(groupmeConnections).where(eq(groupmeConnections.familyId, conn.familyId)).get();
+    if (existing) {
+      db.update(groupmeConnections)
+        .set({ ...conn, updatedAt: new Date().toISOString() })
+        .where(eq(groupmeConnections.familyId, conn.familyId))
+        .run();
+      return db.select().from(groupmeConnections).where(eq(groupmeConnections.familyId, conn.familyId)).get()!;
+    }
+    return db.insert(groupmeConnections).values(conn).returning().get();
+  }
+
+  async getGroupmeConnection(familyId: number): Promise<GroupmeConnection | undefined> {
+    return db.select().from(groupmeConnections).where(eq(groupmeConnections.familyId, familyId)).get();
+  }
+
+  async deleteGroupmeConnection(familyId: number): Promise<void> {
+    db.delete(groupmeConnections).where(eq(groupmeConnections.familyId, familyId)).run();
+  }
+
+  async getGroupmeConnectionByGroupId(groupId: string): Promise<GroupmeConnection | undefined> {
+    return db.select().from(groupmeConnections).where(eq(groupmeConnections.groupId, groupId)).get();
+  }
+
+  async updateGroupmeLastSync(familyId: number, lastMessageId: string): Promise<void> {
+    db.update(groupmeConnections)
+      .set({ lastMessageId, lastSyncedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+      .where(eq(groupmeConnections.familyId, familyId))
+      .run();
   }
 
   // Cascade delete all family data — wrapped in a transaction for atomicity
@@ -835,6 +956,8 @@ export class DatabaseStorage implements IStorage {
       db.delete(chatMessages).where(eq(chatMessages.familyId, familyId)).run();
       db.delete(subscriptions).where(eq(subscriptions.familyId, familyId)).run();
       db.delete(googleOauthTokens).where(eq(googleOauthTokens.familyId, familyId)).run();
+      db.delete(groupmeConnections).where(eq(groupmeConnections.familyId, familyId)).run();
+      db.delete(scheduledJobs).where(eq(scheduledJobs.familyId, familyId)).run();
       db.delete(inviteCodes).where(eq(inviteCodes.familyId, familyId)).run();
       db.delete(users).where(eq(users.familyId, familyId)).run();
       db.delete(familyMembers).where(eq(familyMembers.familyId, familyId)).run();
