@@ -15,6 +15,8 @@ import {
   type MemoryAtom, type InsertMemoryAtom, memoryAtoms,
   type MemoryCompilation, type InsertMemoryCompilation, memoryCompilations,
   type PasswordResetToken, type InsertPasswordResetToken, passwordResetTokens,
+  type LLMConversation, type InsertLLMConversation, llmConversations,
+  type LLMMessage, type InsertLLMMessage, llmMessages,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -188,6 +190,25 @@ sqlite.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS llm_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    title TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS llm_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    model TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   -- Performance indexes for family-scoped queries
   CREATE INDEX IF NOT EXISTS idx_messages_family_created ON messages(family_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_photos_family_created ON photos(family_id, created_at);
@@ -198,6 +219,9 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_media_items_family ON media_items(family_id);
   CREATE INDEX IF NOT EXISTS idx_thinking_of_you_family_created ON thinking_of_you(family_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_locations_family_member ON locations(family_id, member_id);
+
+  CREATE INDEX IF NOT EXISTS idx_llm_conversations_family ON llm_conversations(family_id, user_id);
+  CREATE INDEX IF NOT EXISTS idx_llm_messages_conversation ON llm_messages(conversation_id, created_at);
 
   CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -324,6 +348,14 @@ export interface IStorage {
   updateUserPassword(userId: number, hashedPassword: string): Promise<void>;
   getUsersByFamily(familyId: number): Promise<User[]>;
   deleteUser(userId: number): Promise<void>;
+
+  // LLM Conversations
+  createConversation(data: InsertLLMConversation): Promise<LLMConversation>;
+  getConversations(familyId: number): Promise<LLMConversation[]>;
+  getConversation(id: number): Promise<LLMConversation | undefined>;
+  deleteConversation(id: number): Promise<void>;
+  addMessage(data: InsertLLMMessage): Promise<LLMMessage>;
+  getConversationMessages(conversationId: number, limit?: number): Promise<LLMMessage[]>;
 
   // Cascade delete
   deleteFamilyData(familyId: number): Promise<void>;
@@ -695,9 +727,49 @@ export class DatabaseStorage implements IStorage {
     db.delete(users).where(eq(users.id, userId)).run();
   }
 
+  // LLM Conversations
+  async createConversation(data: InsertLLMConversation): Promise<LLMConversation> {
+    return db.insert(llmConversations).values(data).returning().get();
+  }
+
+  async getConversations(familyId: number): Promise<LLMConversation[]> {
+    return db.select().from(llmConversations)
+      .where(eq(llmConversations.familyId, familyId))
+      .orderBy(desc(llmConversations.updatedAt))
+      .all();
+  }
+
+  async getConversation(id: number): Promise<LLMConversation | undefined> {
+    return db.select().from(llmConversations).where(eq(llmConversations.id, id)).get();
+  }
+
+  async deleteConversation(id: number): Promise<void> {
+    db.delete(llmMessages).where(eq(llmMessages.conversationId, id)).run();
+    db.delete(llmConversations).where(eq(llmConversations.id, id)).run();
+  }
+
+  async addMessage(data: InsertLLMMessage): Promise<LLMMessage> {
+    return db.insert(llmMessages).values(data).returning().get();
+  }
+
+  async getConversationMessages(conversationId: number, limit = 20): Promise<LLMMessage[]> {
+    return db.select().from(llmMessages)
+      .where(eq(llmMessages.conversationId, conversationId))
+      .orderBy(desc(llmMessages.createdAt))
+      .limit(limit)
+      .all()
+      .reverse();
+  }
+
   // Cascade delete all family data — wrapped in a transaction for atomicity
   async deleteFamilyData(familyId: number): Promise<void> {
     const deleteAll = sqlite.transaction(() => {
+      // Delete LLM messages for all conversations in this family
+      const familyConversations = db.select().from(llmConversations).where(eq(llmConversations.familyId, familyId)).all();
+      for (const conv of familyConversations) {
+        db.delete(llmMessages).where(eq(llmMessages.conversationId, conv.id)).run();
+      }
+      db.delete(llmConversations).where(eq(llmConversations.familyId, familyId)).run();
       db.delete(memoryCompilations).where(eq(memoryCompilations.familyId, familyId)).run();
       db.delete(memoryAtoms).where(eq(memoryAtoms.familyId, familyId)).run();
       db.delete(passwordResetTokens).where(

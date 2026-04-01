@@ -1,4 +1,7 @@
 import { storage } from "./storage";
+import * as llm from "./llm";
+import { buildFamilyContext } from "./family-context";
+import { logger } from "./logger";
 import type {
   Family, FamilyMember, Photo, Message, CalendarEvent,
   ThinkingOfYouPulse, ChatMessage, MemoryAtom, MemoryCompilation,
@@ -254,7 +257,19 @@ export class MemoryEngine {
 
     if (!family) throw new Error("Family not found");
 
-    const narrative = this.generateNarrative(atoms, family, members, "week");
+    let narrative: string;
+    if (llm.isLLMConfigured()) {
+      try {
+        const users = await storage.getUsersByFamily(familyId);
+        const userId = users[0]?.id || 0;
+        narrative = await generateLLMNarrative(familyId, userId, 'weekly', atoms, { dateRange: { start: weekStart, end: weekEnd } });
+      } catch (err: any) {
+        logger.warn({ error: err.message }, 'LLM narrative failed, falling back to template');
+        narrative = this.generateNarrative(atoms, family, members, "week");
+      }
+    } else {
+      narrative = this.generateNarrative(atoms, family, members, "week");
+    }
     const coverAtom = atoms.find(a => a.sourceType === "photo") || atoms[0];
 
     const startDate = new Date(weekStart);
@@ -289,7 +304,19 @@ export class MemoryEngine {
 
     if (!family) throw new Error("Family not found");
 
-    const narrative = this.generateNarrative(atoms, family, members, "month");
+    let narrative: string;
+    if (llm.isLLMConfigured()) {
+      try {
+        const users = await storage.getUsersByFamily(familyId);
+        const userId = users[0]?.id || 0;
+        narrative = await generateLLMNarrative(familyId, userId, 'monthly', atoms, { dateRange: { start, end } });
+      } catch (err: any) {
+        logger.warn({ error: err.message }, 'LLM narrative failed, falling back to template');
+        narrative = this.generateNarrative(atoms, family, members, "month");
+      }
+    } else {
+      narrative = this.generateNarrative(atoms, family, members, "month");
+    }
     const coverAtom = atoms.find(a => a.sourceType === "photo") || atoms[0];
 
     return storage.createMemoryCompilation({
@@ -484,6 +511,72 @@ export class MemoryEngine {
 
     return count;
   }
+}
+
+// ─── LLM Narrative Generation ──────────────────────────────────────────
+
+export async function generateLLMNarrative(
+  familyId: number,
+  userId: number,
+  compilationType: 'weekly' | 'monthly' | 'birthday' | 'on_this_day' | 'personal_lens',
+  atoms: MemoryAtom[],
+  options: {
+    subjectName?: string;
+    relationshipNote?: string;
+    dateRange?: { start: string; end: string };
+  } = {}
+): Promise<string> {
+  const context = await buildFamilyContext(familyId, userId);
+
+  const atomDescriptions = atoms.map(a =>
+    `- [${a.category}] ${a.title}${a.description ? ': ' + a.description : ''} (${new Date(a.createdAt).toLocaleDateString()})`
+  ).join('\n');
+
+  const narrativePrompts: Record<string, string> = {
+    weekly: `Write a warm, personal weekly family recap narrative based on these memory atoms from the past week. Write it as if you're a loving family friend looking back on the week with them — specific, warm, not generic. 2-4 paragraphs.
+
+Memory atoms from this week:
+${atomDescriptions}
+
+Write the narrative now:`,
+
+    monthly: `Write a beautiful monthly family highlight narrative. This is the kind of thing a family would want to read years from now and feel transported back. Capture the emotional texture of the month — the big moments and the quiet ones. 3-5 paragraphs.
+
+Memory atoms from this month:
+${atomDescriptions}
+
+Write the narrative now:`,
+
+    birthday: `Write a birthday compilation narrative for ${options.subjectName || 'this family member'}. This should feel like a love letter — celebrating who they are, what they mean to the family, all the moments captured here. Warm, specific, emotional. 3-5 paragraphs.
+
+Memories involving ${options.subjectName || 'them'}:
+${atomDescriptions}
+
+Write the birthday narrative now:`,
+
+    on_this_day: `Write an "On This Day" memory narrative. Today's date matches memories from past years. Make it nostalgic and warm — remind the family of what they were doing and feeling on this date. 1-3 paragraphs.
+
+Memories from this date in past years:
+${atomDescriptions}
+
+Write the "On This Day" narrative now:`,
+
+    personal_lens: `Write a personal relationship narrative. This is the story of the relationship between two family members, told through their shared moments together. ${options.relationshipNote || ''} Make it intimate and specific. 2-4 paragraphs.
+
+Shared memories:
+${atomDescriptions}
+
+Write the personal lens narrative now:`,
+  };
+
+  const response = await llm.complete({
+    system: context.systemPrompt,
+    messages: [{ role: 'user', content: narrativePrompts[compilationType] || narrativePrompts.weekly }],
+    maxTokens: 1500,
+    temperature: 0.75,
+  });
+
+  return response.content;
 }
 
 export const memoryEngine = new MemoryEngine();

@@ -181,6 +181,26 @@ export const passwordResetTokens = sqliteTable("password_reset_tokens", {
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
 });
 
+export const llmConversations = sqliteTable("llm_conversations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  familyId: integer("family_id").notNull(),
+  userId: integer("user_id").notNull(),
+  title: text("title"),
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().default(new Date().toISOString()),
+});
+
+export const llmMessages = sqliteTable("llm_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  conversationId: integer("conversation_id").notNull(),
+  role: text("role").notNull(), // user, assistant
+  content: text("content").notNull(),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  model: text("model"),
+  createdAt: text("created_at").notNull().default(new Date().toISOString()),
+});
+
 // Insert schemas
 export const insertFamilySchema = createInsertSchema(families).omit({ id: true, createdAt: true });
 export const insertFamilyMemberSchema = createInsertSchema(familyMembers).omit({ id: true, createdAt: true });
@@ -198,6 +218,8 @@ export const insertMemoryAtomSchema = createInsertSchema(memoryAtoms).omit({ id:
 export const insertMemoryCompilationSchema = createInsertSchema(memoryCompilations).omit({ id: true, createdAt: true });
 export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true, createdAt: true });
 export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({ id: true, createdAt: true });
+export const insertLLMConversationSchema = createInsertSchema(llmConversations).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertLLMMessageSchema = createInsertSchema(llmMessages).omit({ id: true, createdAt: true });
 
 // Insert types
 export type InsertFamily = z.infer<typeof insertFamilySchema>;
@@ -216,6 +238,8 @@ export type InsertMemoryAtom = z.infer<typeof insertMemoryAtomSchema>;
 export type InsertMemoryCompilation = z.infer<typeof insertMemoryCompilationSchema>;
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
+export type InsertLLMConversation = z.infer<typeof insertLLMConversationSchema>;
+export type InsertLLMMessage = z.infer<typeof insertLLMMessageSchema>;
 
 // Select types
 export type Family = typeof families.$inferSelect;
@@ -234,3 +258,5 @@ export type MemoryAtom = typeof memoryAtoms.$inferSelect;
 export type MemoryCompilation = typeof memoryCompilations.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type LLMConversation = typeof llmConversations.$inferSelect;
+export type LLMMessage = typeof llmMessages.$inferSelect;

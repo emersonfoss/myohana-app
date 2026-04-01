@@ -13,6 +13,7 @@ import { Sun, Moon } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
+import { AskOhana } from "@/components/ask-ohana";
 import Dashboard from "@/pages/dashboard";
 import Messages from "@/pages/messages";
 import Vault from "@/pages/vault";
@@ -120,6 +121,7 @@ function AppLayout() {
         </div>
       </div>
       <PWAInstallPrompt />
+      <AskOhana />
     </SidebarProvider>
   );
 }

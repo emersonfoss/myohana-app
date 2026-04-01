@@ -22,6 +22,8 @@ import { sanitizeInputMiddleware } from "./sanitize";
 import { sendEmail } from "./email";
 import { uploadFile, deleteFile, getSignedDownloadUrl, buildFileKey, isS3Configured } from "./storage-s3";
 import { logger } from "./logger";
+import * as llm from "./llm";
+import { buildFamilyContext } from "./family-context";
 import {
   families,
   familyMembers,
@@ -193,6 +195,7 @@ const csrfExcludedPaths = [
   "/api/billing/webhook",
   "/api/photos/upload",
   "/api/vault",
+  "/api/ohana/ask",
 ];
 
 const {
@@ -2274,6 +2277,123 @@ export async function registerRoutes(
       res.status(500).json({ message: error.message || "Account deletion failed" });
     }
   });
+
+  // ─── Ask Ohana — LLM Conversation Endpoints ─────────────────────
+
+  // POST /api/ohana/ask — send a message, get AI response
+  app.post("/api/ohana/ask", async (req, res) => {
+    try {
+      const { message, conversationId } = req.body;
+      const { familyId, id: userId } = req.user!;
+
+      if (!message || typeof message !== "string" || message.length > 2000) {
+        return res.status(400).json({ error: "Message required, max 2000 characters" });
+      }
+
+      if (!llm.isLLMConfigured()) {
+        return res.status(503).json({ error: "AI is not configured. Set LLM_PROVIDER and API key." });
+      }
+
+      // Build or continue conversation
+      let convId = conversationId;
+      if (!convId) {
+        const conv = await storage.createConversation({
+          familyId,
+          userId,
+          title: message.slice(0, 80),
+        });
+        convId = conv.id;
+      } else {
+        // Verify conversation belongs to this family
+        const existing = await storage.getConversation(convId);
+        if (!existing || existing.familyId !== familyId) {
+          return res.status(403).json({ error: "Conversation not found" });
+        }
+      }
+
+      // Load conversation history (last 20 messages for context)
+      const history = await storage.getConversationMessages(convId, 20);
+
+      const llmMessages: llm.LLMMessage[] = history.map(m => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
+      llmMessages.push({ role: "user", content: message });
+
+      // Build family context
+      const context = await buildFamilyContext(familyId, userId);
+
+      // Call LLM
+      const llmResponse = await llm.complete({
+        system: context.systemPrompt,
+        messages: llmMessages,
+        maxTokens: 2048,
+        temperature: 0.7,
+      });
+
+      // Detect intent (simple classification for UI routing)
+      const intent = detectIntent(message);
+
+      // Save both messages to DB
+      await storage.addMessage({
+        conversationId: convId,
+        role: "user",
+        content: message,
+      });
+      await storage.addMessage({
+        conversationId: convId,
+        role: "assistant",
+        content: llmResponse.content,
+        inputTokens: llmResponse.inputTokens,
+        outputTokens: llmResponse.outputTokens,
+        model: llmResponse.model,
+      });
+
+      res.json({
+        response: llmResponse.content,
+        conversationId: convId,
+        intent,
+        tokensUsed: llmResponse.inputTokens + llmResponse.outputTokens,
+      });
+    } catch (error: any) {
+      logger.error({ error: error.message }, "Ask Ohana failed");
+      res.status(500).json({ error: error.message || "Failed to get AI response" });
+    }
+  });
+
+  // GET /api/ohana/conversations — list conversations for the user
+  app.get("/api/ohana/conversations", async (req, res) => {
+    try {
+      const conversations = await storage.getConversations(req.user!.familyId);
+      res.json(conversations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch conversations" });
+    }
+  });
+
+  // DELETE /api/ohana/conversations/:id — delete a conversation
+  app.delete("/api/ohana/conversations/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const conv = await storage.getConversation(id);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.familyId !== req.user!.familyId) return res.status(403).json({ error: "Not authorized" });
+      await storage.deleteConversation(id);
+      res.json({ message: "Conversation deleted" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to delete conversation" });
+    }
+  });
+
+  // Simple intent detection — classify user's request for frontend routing
+  function detectIntent(message: string): string {
+    const m = message.toLowerCase();
+    if (m.includes("photo") || m.includes("import") || m.includes("google photos")) return "import_photos";
+    if (m.includes("compilation") || m.includes("birthday") || m.includes("recap")) return "generate_compilation";
+    if (m.includes("find") || m.includes("search") || m.includes("when did")) return "search_memories";
+    if (m.includes("groupme") || m.includes("whatsapp") || m.includes("message")) return "chat_bridge";
+    return "conversation";
+  }
 
   return { httpServer, wss };
 }
