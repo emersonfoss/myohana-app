@@ -26,7 +26,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink, Download, Settings as SettingsIcon } from "lucide-react";
+import { CreditCard, Users, Mail, Copy, Check, AlertTriangle, ExternalLink, Download, Settings as SettingsIcon, Link2, Unlink } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -49,6 +49,122 @@ interface Subscription {
 interface AppConfig {
   stripePublishableKey: string | null;
   billingEnabled: boolean;
+}
+
+function GooglePhotosSection() {
+  const { toast } = useToast();
+  const { data: googleStatus, isLoading, isError } = useQuery<{ connected: boolean; email?: string }>({
+    queryKey: ["/api/google-photos/status"],
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/auth/google");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/google-photos/status"] });
+      toast({ title: "Disconnected", description: "Google Photos has been disconnected." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // If the status endpoint errors (not configured), show graceful fallback
+  if (isError) {
+    return (
+      <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid="connected-accounts-card">
+        <CardHeader className="flex flex-row items-center gap-3">
+          <Link2 className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+          <CardTitle
+            className="text-lg"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Connected Accounts
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between py-1">
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-lg" aria-hidden="true">G</span>
+              <div>
+                <p className="text-sm font-medium">Google Photos</p>
+                <p className="text-xs text-muted-foreground">Not available</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid="connected-accounts-card">
+      <CardHeader className="flex flex-row items-center gap-3">
+        <Link2 className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+        <CardTitle
+          className="text-lg"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          Connected Accounts
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : googleStatus?.connected ? (
+          <div className="flex items-center justify-between py-1">
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-lg" aria-hidden="true">G</span>
+              <div>
+                <p className="text-sm font-medium">Google Photos</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-green-500 inline-block" />
+                  <span className="text-xs text-muted-foreground">
+                    Connected{googleStatus.email ? ` as ${googleStatus.email}` : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => disconnectMutation.mutate()}
+              disabled={disconnectMutation.isPending}
+              className="text-muted-foreground hover:text-destructive"
+              data-testid="button-disconnect-google"
+            >
+              <Unlink className="h-4 w-4 mr-1.5" />
+              {disconnectMutation.isPending ? "Disconnecting..." : "Disconnect"}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between py-1">
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-lg text-muted-foreground" aria-hidden="true">G</span>
+              <div>
+                <p className="text-sm font-medium">Google Photos</p>
+                <p className="text-xs text-muted-foreground">Not connected</p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { window.location.href = "/api/auth/google"; }}
+              className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              data-testid="button-connect-google"
+            >
+              <Link2 className="h-4 w-4 mr-1.5" />
+              Connect
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function Settings() {
@@ -435,6 +551,9 @@ export default function Settings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Connected Accounts Section */}
+      <GooglePhotosSection />
 
       {/* Account Section */}
       <Card className="border-amber-100/80 dark:border-amber-900/20 shadow-sm shadow-amber-100/40 dark:shadow-none" data-testid="account-card">

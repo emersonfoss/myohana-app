@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { ensureCsrfToken } from "@/lib/queryClient";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,15 +21,223 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Camera, Plus, X, Upload, ChevronLeft, ChevronRight } from "lucide-react";
+import { Camera, Plus, X, Upload, ChevronLeft, ChevronRight, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
 import { formatDistanceToNow, parseISO, format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import type { Family, FamilyMember, Photo } from "@shared/schema";
+
+// Google Photos import flow states
+type ImportStep = "idle" | "creating" | "waiting" | "importing" | "done" | "error";
+
+function GooglePhotosImportDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [step, setStep] = useState<ImportStep>("idle");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [pickerUri, setPickerUri] = useState<string | null>(null);
+  const [importedCount, setImportedCount] = useState(0);
+  const [errorMsg, setErrorMsg] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const cleanup = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  // Reset state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      cleanup();
+      setStep("idle");
+      setSessionId(null);
+      setPickerUri(null);
+      setImportedCount(0);
+      setErrorMsg("");
+    }
+  }, [open, cleanup]);
+
+  // Cleanup on unmount
+  useEffect(() => cleanup, [cleanup]);
+
+  const startSession = async () => {
+    setStep("creating");
+    try {
+      const token = await ensureCsrfToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["x-csrf-token"] = token;
+      const res = await fetch("/api/google-photos/session", {
+        method: "POST",
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error((await res.text()) || "Failed to create session");
+      const data = await res.json();
+      setSessionId(data.id);
+      setPickerUri(data.pickerUri);
+      setStep("waiting");
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to create Google Photos session");
+      setStep("error");
+    }
+  };
+
+  const openPicker = () => {
+    if (pickerUri) window.open(pickerUri, "_blank");
+  };
+
+  // Start polling when we enter "waiting" step
+  useEffect(() => {
+    if (step !== "waiting" || !sessionId) return;
+    cleanup();
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/google-photos/session/${sessionId}`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.mediaItemsSet) {
+          cleanup();
+          setStep("importing");
+          // Trigger import
+          try {
+            const token = await ensureCsrfToken();
+            const importHeaders: Record<string, string> = {};
+            if (token) importHeaders["x-csrf-token"] = token;
+            const importRes = await fetch(`/api/google-photos/import/${sessionId}`, {
+              method: "POST",
+              headers: importHeaders,
+              credentials: "include",
+            });
+            if (!importRes.ok) throw new Error((await importRes.text()) || "Import failed");
+            const importData = await importRes.json();
+            setImportedCount(importData.imported ?? importData.count ?? 0);
+            setStep("done");
+            queryClient.invalidateQueries({ queryKey: ["/api/photos"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/memories"] });
+          } catch (err: any) {
+            setErrorMsg(err.message || "Failed to import photos");
+            setStep("error");
+          }
+        }
+      } catch {
+        // Polling error — will retry on next interval
+      }
+    }, 5000);
+    return cleanup;
+  }, [step, sessionId, cleanup]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            className="text-xl"
+          >
+            Import from Google Photos
+          </DialogTitle>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          {step === "idle" && (
+            <div className="text-center space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Select photos from your Google Photos library to import into your family album.
+              </p>
+              <Button onClick={startSession} data-testid="button-start-google-import">
+                Start Import
+              </Button>
+            </div>
+          )}
+
+          {step === "creating" && (
+            <div className="flex flex-col items-center gap-3 py-4">
+              <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+              <p className="text-sm text-muted-foreground">Setting up Google Photos...</p>
+            </div>
+          )}
+
+          {step === "waiting" && (
+            <div className="text-center space-y-4">
+              <div className="p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30">
+                <p className="text-sm text-amber-800 dark:text-amber-300">
+                  Google Photos will open in a new tab. Select the photos you want to import, then come back here.
+                </p>
+              </div>
+              <Button onClick={openPicker} data-testid="button-open-google-picker">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open Google Photos
+              </Button>
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Waiting for your selection...
+              </div>
+            </div>
+          )}
+
+          {step === "importing" && (
+            <div className="flex flex-col items-center gap-3 py-4">
+              <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+              <p className="text-sm text-muted-foreground font-medium">Importing your photos...</p>
+            </div>
+          )}
+
+          {step === "done" && (
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <CheckCircle2 className="h-10 w-10 text-green-500" />
+              <p
+                className="text-lg font-semibold"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+              >
+                Imported {importedCount} {importedCount === 1 ? "photo" : "photos"}
+              </p>
+              <p className="text-sm text-muted-foreground">Your photos are now in your family album.</p>
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                data-testid="button-close-import"
+              >
+                Done
+              </Button>
+            </div>
+          )}
+
+          {step === "error" && (
+            <div className="text-center space-y-4">
+              <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/30">
+                <p className="text-sm text-destructive">{errorMsg}</p>
+              </div>
+              <div className="flex justify-center gap-2">
+                <Button variant="outline" onClick={() => { setStep("idle"); setErrorMsg(""); }}>
+                  Try Again
+                </Button>
+                <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function Photos() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [caption, setCaption] = useState("");
   const [takenAt, setTakenAt] = useState("");
@@ -38,6 +246,13 @@ export default function Photos() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Google Photos connection status
+  const { data: googleStatus } = useQuery<{ connected: boolean; email?: string }>({
+    queryKey: ["/api/google-photos/status"],
+    retry: false,
+    staleTime: 60_000,
+  });
 
   const { data: familyData } = useQuery<{ family: Family; members: FamilyMember[] }>({
     queryKey: ["/api/family"],
@@ -154,6 +369,29 @@ export default function Photos() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Google Photos import button */}
+          {googleStatus?.connected ? (
+            <Button
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+              className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              data-testid="button-import-google-photos"
+            >
+              <span className="font-bold text-sm mr-1.5" aria-hidden="true">G</span>
+              Import from Google
+            </Button>
+          ) : googleStatus && !googleStatus.connected ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/settings")}
+              className="text-muted-foreground hover:text-amber-700 dark:hover:text-amber-400"
+              data-testid="button-connect-google-photos"
+            >
+              Connect Google Photos
+            </Button>
+          ) : null}
 
           <Dialog open={uploadOpen} onOpenChange={(open) => { setUploadOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
@@ -402,6 +640,9 @@ export default function Photos() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Google Photos Import Dialog */}
+      <GooglePhotosImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

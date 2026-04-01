@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -85,6 +86,10 @@ export const photos = sqliteTable("photos", {
   url: text("url").notNull(),
   caption: text("caption"),
   takenAt: text("taken_at"),
+  source: text("source"),
+  externalId: text("external_id"),
+  filename: text("filename"),
+  mimeType: text("mime_type"),
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
 });
 
@@ -201,6 +206,19 @@ export const llmMessages = sqliteTable("llm_messages", {
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
 });
 
+export const googleOauthTokens = sqliteTable("google_oauth_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().unique(),
+  familyId: integer("family_id").notNull(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  expiresAt: text("expires_at").notNull(),
+  scope: text("scope").notNull(),
+  tokenType: text("token_type").notNull().default("Bearer"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 // Insert schemas
 export const insertFamilySchema = createInsertSchema(families).omit({ id: true, createdAt: true });
 export const insertFamilyMemberSchema = createInsertSchema(familyMembers).omit({ id: true, createdAt: true });
@@ -220,6 +238,7 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
 export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({ id: true, createdAt: true });
 export const insertLLMConversationSchema = createInsertSchema(llmConversations).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertLLMMessageSchema = createInsertSchema(llmMessages).omit({ id: true, createdAt: true });
+export const insertGoogleOauthTokenSchema = createInsertSchema(googleOauthTokens).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Insert types
 export type InsertFamily = z.infer<typeof insertFamilySchema>;
@@ -240,6 +259,7 @@ export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
 export type InsertLLMConversation = z.infer<typeof insertLLMConversationSchema>;
 export type InsertLLMMessage = z.infer<typeof insertLLMMessageSchema>;
+export type InsertGoogleOauthToken = z.infer<typeof insertGoogleOauthTokenSchema>;
 
 // Select types
 export type Family = typeof families.$inferSelect;
@@ -260,3 +280,4 @@ export type Subscription = typeof subscriptions.$inferSelect;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type LLMConversation = typeof llmConversations.$inferSelect;
 export type LLMMessage = typeof llmMessages.$inferSelect;
+export type GoogleOauthToken = typeof googleOauthTokens.$inferSelect;

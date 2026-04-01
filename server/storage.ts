@@ -17,6 +17,7 @@ import {
   type PasswordResetToken, type InsertPasswordResetToken, passwordResetTokens,
   type LLMConversation, type InsertLLMConversation, llmConversations,
   type LLMMessage, type InsertLLMMessage, llmMessages,
+  type GoogleOauthToken, type InsertGoogleOauthToken, googleOauthTokens,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -244,6 +245,28 @@ try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN file_key TEXT`); } cat
 try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN file_size INTEGER`); } catch {}
 try { sqlite.exec(`ALTER TABLE vault_documents ADD COLUMN mime_type TEXT`); } catch {}
 
+// Add Google Photos columns to photos (Sprint D2 migration)
+try { sqlite.exec(`ALTER TABLE photos ADD COLUMN source TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE photos ADD COLUMN external_id TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE photos ADD COLUMN filename TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE photos ADD COLUMN mime_type TEXT`); } catch {}
+
+// Create google_oauth_tokens table (Sprint D2)
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS google_oauth_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    family_id INTEGER NOT NULL,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    expires_at TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    token_type TEXT NOT NULL DEFAULT 'Bearer',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 export interface IStorage {
   // Family
   getFamily(): Promise<Family | undefined>;
@@ -356,6 +379,11 @@ export interface IStorage {
   deleteConversation(id: number): Promise<void>;
   addMessage(data: InsertLLMMessage): Promise<LLMMessage>;
   getConversationMessages(conversationId: number, limit?: number): Promise<LLMMessage[]>;
+
+  // Google OAuth Tokens
+  saveGoogleToken(token: InsertGoogleOauthToken): Promise<GoogleOauthToken>;
+  getGoogleToken(userId: number): Promise<GoogleOauthToken | undefined>;
+  deleteGoogleToken(userId: number): Promise<void>;
 
   // Cascade delete
   deleteFamilyData(familyId: number): Promise<void>;
@@ -761,6 +789,28 @@ export class DatabaseStorage implements IStorage {
       .reverse();
   }
 
+  // Google OAuth Tokens
+  async saveGoogleToken(token: InsertGoogleOauthToken): Promise<GoogleOauthToken> {
+    // Upsert — replace existing token for the same user
+    const existing = db.select().from(googleOauthTokens).where(eq(googleOauthTokens.userId, token.userId)).get();
+    if (existing) {
+      db.update(googleOauthTokens)
+        .set({ ...token, updatedAt: new Date().toISOString() })
+        .where(eq(googleOauthTokens.userId, token.userId))
+        .run();
+      return db.select().from(googleOauthTokens).where(eq(googleOauthTokens.userId, token.userId)).get()!;
+    }
+    return db.insert(googleOauthTokens).values(token).returning().get();
+  }
+
+  async getGoogleToken(userId: number): Promise<GoogleOauthToken | undefined> {
+    return db.select().from(googleOauthTokens).where(eq(googleOauthTokens.userId, userId)).get();
+  }
+
+  async deleteGoogleToken(userId: number): Promise<void> {
+    db.delete(googleOauthTokens).where(eq(googleOauthTokens.userId, userId)).run();
+  }
+
   // Cascade delete all family data — wrapped in a transaction for atomicity
   async deleteFamilyData(familyId: number): Promise<void> {
     const deleteAll = sqlite.transaction(() => {
@@ -784,6 +834,7 @@ export class DatabaseStorage implements IStorage {
       db.delete(locations).where(eq(locations.familyId, familyId)).run();
       db.delete(chatMessages).where(eq(chatMessages.familyId, familyId)).run();
       db.delete(subscriptions).where(eq(subscriptions.familyId, familyId)).run();
+      db.delete(googleOauthTokens).where(eq(googleOauthTokens.familyId, familyId)).run();
       db.delete(inviteCodes).where(eq(inviteCodes.familyId, familyId)).run();
       db.delete(users).where(eq(users.familyId, familyId)).run();
       db.delete(familyMembers).where(eq(familyMembers.familyId, familyId)).run();

@@ -23,6 +23,8 @@ import { sendEmail } from "./email";
 import { uploadFile, deleteFile, getSignedDownloadUrl, buildFileKey, isS3Configured } from "./storage-s3";
 import { logger } from "./logger";
 import * as llm from "./llm";
+import { isGoogleConfigured, getGoogleAuthUrl, exchangeGoogleCode, isGoogleConnected, disconnectGoogle } from "./google-auth";
+import { createPickerSession, pollPickerSession, importAllPickerItems } from "./google-photos";
 import { buildFamilyContext } from "./family-context";
 import {
   families,
@@ -196,6 +198,7 @@ const csrfExcludedPaths = [
   "/api/photos/upload",
   "/api/vault",
   "/api/ohana/ask",
+  "/api/auth/google/callback",
 ];
 
 const {
@@ -2394,6 +2397,100 @@ export async function registerRoutes(
     if (m.includes("groupme") || m.includes("whatsapp") || m.includes("message")) return "chat_bridge";
     return "conversation";
   }
+
+  // ─── Google Photos Integration ─────────────────────────────────────
+
+  // Initiate Google OAuth
+  app.get("/api/auth/google", async (req, res) => {
+    if (!isGoogleConfigured()) {
+      return res.status(503).json({ error: "Google integration not configured" });
+    }
+    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    const url = getGoogleAuthUrl(req.user.id);
+    res.redirect(url);
+  });
+
+  // OAuth callback — CSRF-excluded since it's a redirect from Google
+  app.get("/api/auth/google/callback", async (req, res) => {
+    try {
+      if (!req.user) return res.redirect("/#/settings?google=error");
+      const { code, error } = req.query;
+      if (error || !code) {
+        return res.redirect("/#/settings?google=error");
+      }
+      await exchangeGoogleCode(code as string, req.user.id, req.user.familyId);
+      res.redirect("/#/photos?google=connected");
+    } catch (err: any) {
+      logger.error("Google OAuth callback error", err);
+      res.redirect("/#/settings?google=error");
+    }
+  });
+
+  // Disconnect Google account
+  app.delete("/api/auth/google", async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    await disconnectGoogle(req.user.id);
+    res.json({ message: "Google account disconnected" });
+  });
+
+  // Google Photos connection status
+  app.get("/api/google-photos/status", async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    if (!isGoogleConfigured()) {
+      return res.status(503).json({ error: "Google integration not configured" });
+    }
+    const connected = await isGoogleConnected(req.user.id);
+    res.json({ connected });
+  });
+
+  // Create picker session
+  app.post("/api/google-photos/session", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      if (!isGoogleConfigured()) {
+        return res.status(503).json({ error: "Google integration not configured" });
+      }
+      const connected = await isGoogleConnected(req.user.id);
+      if (!connected) {
+        return res.status(400).json({ error: "Google account not connected. Connect first via /api/auth/google" });
+      }
+      const session = await createPickerSession(req.user.id);
+      res.json({ sessionId: session.id, pickerUri: session.pickerUri });
+    } catch (err: any) {
+      logger.error("Create picker session error", err);
+      res.status(500).json({ error: err.message || "Failed to create picker session" });
+    }
+  });
+
+  // Poll session status
+  app.get("/api/google-photos/session/:id", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      const session = await pollPickerSession(req.user.id, req.params.id);
+      res.json({ mediaItemsSet: !!session.mediaItemsSet });
+    } catch (err: any) {
+      logger.error("Poll picker session error", err);
+      res.status(500).json({ error: err.message || "Failed to poll picker session" });
+    }
+  });
+
+  // Import selected items from a completed picker session
+  app.post("/api/google-photos/import/:sessionId", async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      const members = await storage.getFamilyMembers(req.user.familyId);
+      const result = await importAllPickerItems(
+        req.user.id,
+        req.user.familyId,
+        req.params.sessionId,
+        members,
+      );
+      res.json(result);
+    } catch (err: any) {
+      logger.error("Google Photos import error", err);
+      res.status(500).json({ error: err.message || "Failed to import photos" });
+    }
+  });
 
   return { httpServer, wss };
 }
