@@ -2414,9 +2414,21 @@ export async function registerRoutes(
   app.get("/api/auth/google/callback", async (req, res) => {
     try {
       if (!req.user) return res.redirect("/#/settings?google=error");
-      const { code, error } = req.query;
+      const { code, error, state } = req.query;
       if (error || !code) {
         return res.redirect("/#/settings?google=error");
+      }
+      // Verify OAuth state matches the authenticated user
+      if (state) {
+        try {
+          const decoded = JSON.parse(Buffer.from(state as string, "base64").toString());
+          if (decoded.userId !== req.user.id) {
+            logger.warn({ expected: decoded.userId, actual: req.user.id }, "OAuth state mismatch");
+            return res.redirect("/#/settings?google=error");
+          }
+        } catch {
+          logger.warn("Failed to decode OAuth state parameter");
+        }
       }
       await exchangeGoogleCode(code as string, req.user.id, req.user.familyId);
       res.redirect("/#/photos?google=connected");

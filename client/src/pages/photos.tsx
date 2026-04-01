@@ -81,7 +81,7 @@ function GooglePhotosImportDialog({
       });
       if (!res.ok) throw new Error((await res.text()) || "Failed to create session");
       const data = await res.json();
-      setSessionId(data.id);
+      setSessionId(data.sessionId);
       setPickerUri(data.pickerUri);
       setStep("waiting");
     } catch (err: any) {
